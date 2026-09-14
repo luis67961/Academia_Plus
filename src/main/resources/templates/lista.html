@@ -1,25 +1,32 @@
 <!DOCTYPE html>
-<html lang="es" xmlns:th="http://www.thymeleaf.org">
+<html xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="UTF-8">
-    <title>Listado de Matrículas</title>
+    <title>Lista de Matrículas - Plus Twenty</title>
     <link rel="stylesheet" th:href="@{/estilos.css}">
 </head>
 <body>
-    <h1>Listado de Matrículas</h1>
 
-    <table>
+    <h1>Matrículas registradas</h1>
+
+    <table border="1">
         <thead>
             <tr>
-                <th>ID</th>
-                <!-- más columnas se agregarán en los siguientes commits -->
+                <th>Alumno</th>
+                <th>Curso</th>
+                <th>Fecha</th>
             </tr>
         </thead>
+
         <tbody>
-            <tr th:each="matricula : ${matriculas}">
-                <td th:text="${matricula.id}">1</td>
+            <tr th:each="m : ${listaMatriculas}">
+                <td th:text="${m.alumno}"></td>
+                <td th:text="${m.curso}"></td>
+                <td th:text="${m.fecha}"></td>
             </tr>
         </tbody>
+
     </table>
+
 </body>
 </html>
