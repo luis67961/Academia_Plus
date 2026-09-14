@@ -11,7 +11,11 @@ public class MatriculaController {
 
     @Autowired
     private MatriculaRepository matriculaRepository;
-
+@GetMapping
+    public String listar(Model model) {
+        model.addAttribute("listaMatriculas", matriculaRepository.findAll());
+        return "lista";
+    }
 
     @GetMapping("/nueva")
     public String formularioNueva(Model model) {
@@ -22,6 +26,24 @@ public class MatriculaController {
     @PostMapping
     public String guardar(@ModelAttribute Matricula matricula) {
         matriculaRepository.save(matricula);
+        return "redirect:/matriculas";
+    }
+    @GetMapping("/editar/{id}")
+    public String formularioEditar(@PathVariable Long id, Model model) {
+        model.addAttribute("matricula", matriculaRepository.findById(id).orElseThrow());
+        return "editar";
+    }
+
+    @PostMapping("/actualizar/{id}")
+    public String actualizar(@PathVariable Long id, @ModelAttribute Matricula matricula) {
+        matricula.setId(id);
+        matriculaRepository.save(matricula);
+        return "redirect:/matriculas";
+    }
+
+    @GetMapping("/eliminar/{id}")
+    public String eliminar(@PathVariable Long id) {
+        matriculaRepository.deleteById(id);
         return "redirect:/matriculas";
     }
 
