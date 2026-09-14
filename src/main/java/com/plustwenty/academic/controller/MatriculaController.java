@@ -11,11 +11,12 @@ public class MatriculaController {
 
     @Autowired
     private MatriculaRepository matriculaRepository;
+
 @GetMapping
-    public String listar(Model model) {
-        model.addAttribute("listaMatriculas", matriculaRepository.findAll());
-        return "lista";
-    }
+public String listar(Model model) {
+    model.addAttribute("listaMatriculas", matriculaRepository.findAll());
+    return "lista";
+}
 
     @GetMapping("/nueva")
     public String formularioNueva(Model model) {
@@ -46,5 +47,9 @@ public class MatriculaController {
         matriculaRepository.deleteById(id);
         return "redirect:/matriculas";
     }
+
+    
+
+    
 
 }
