@@ -14,6 +14,7 @@ public class Matricula {
     private Long id;
 
     private String alumno;
+    private String dni;
     private String curso;
     private LocalDate fecha;
     private String estado;
@@ -24,6 +25,8 @@ public class Matricula {
     public void setId(Long id) { this.id = id; }
     public String getAlumno() { return alumno; }
     public void setAlumno(String alumno) { this.alumno = alumno; }
+    public String getDni() { return dni; }
+    public void setDni(String dni) { this.dni = dni; }
     public String getCurso() { return curso; }
     public void setCurso(String curso) { this.curso = curso; }
     public LocalDate getFecha() { return fecha; }
