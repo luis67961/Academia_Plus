@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Registrar Matrícula - Plus Twenty</title>
+    <link rel="stylesheet" th:href="@{/estilos.css}">
+</head>
+<body>
+    <h1>Registrar matrícula</h1>
+    <form th:action="@{/matriculas}" th:object="${matricula}" method="post">
+        <label>Alumno: <input type="text" th:field="*{alumno}" required></label><br>
+        <label>Curso: <input type="text" th:field="*{curso}" required></label><br>
+        <label>Fecha: <input type="date" th:field="*{fecha}" required></label><br>
+        <label>Estado:
+            <select th:field="*{estado}">
+                <option value="Activo">Activo</option>
+                <option value="Pendiente">Pendiente</option>
+            </select>
+        </label><br>
+        <button type="submit">Guardar</button>
+    </form>
+    <a th:href="@{/matriculas}">Volver</a>
+</body>
+</html>

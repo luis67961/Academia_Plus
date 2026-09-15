@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Lista de Matrículas - Plus Twenty</title>
+    <link rel="stylesheet" th:href="@{/estilos.css}">
+</head>
+<body>
+
+    <h1>Matrículas registradas</h1>
+
+    <a href="/matriculas/nueva">+ Nueva matrícula</a>
+
+    <table border="1">
+        <thead>
+            <tr>
+                <th>Alumno</th>
+                <th>Curso</th>
+                <th>Fecha</th>
+                <th>Estado</th>
+                <th>Acciones</th>
+            </tr>
+        </thead>
+
+        <tbody>
+            <tr th:each="m : ${listaMatriculas}">
+                <td th:text="${m.alumno}"></td>
+                <td th:text="${m.curso}"></td>
+                <td th:text="${m.fecha}"></td>
+                <td th:text="${m.estado}"></td>
+                <td>
+                    <a th:href="@{/matriculas/editar/{id}(id=${m.id})}">
+                        Editar
+                    </a>
+
+                    <a th:href="@{/matriculas/eliminar/{id}(id=${m.id})}">
+                        Eliminar
+                    </a>
+                </td>
+            </tr>
+        </tbody>
+
+    </table>
+
+</body>
+</html>
