@@ -16,6 +16,7 @@ public class Matricula {
     private String alumno;
     private String dni;
     private String curso;
+    private String turno;
     private LocalDate fecha;
     private String estado;
 
@@ -29,6 +30,8 @@ public class Matricula {
     public void setDni(String dni) { this.dni = dni; }
     public String getCurso() { return curso; }
     public void setCurso(String curso) { this.curso = curso; }
+    public String getTurno() {return turno;}
+    public void setTurno(String turno) {this.turno = turno;}
     public LocalDate getFecha() { return fecha; }
     public void setFecha(LocalDate fecha) { this.fecha = fecha; }
     public String getEstado() { return estado; }
