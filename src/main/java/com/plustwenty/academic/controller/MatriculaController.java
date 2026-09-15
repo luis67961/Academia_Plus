@@ -5,6 +5,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
+
+/**
+ * Controlador encargado de gestionar las operaciones CRUD
+ * de las matrículas de estudiantes en el sistema.
+ */
 @Controller
 @RequestMapping("/matriculas")
 public class MatriculaController {
@@ -12,11 +17,18 @@ public class MatriculaController {
     @Autowired
     private MatriculaRepository matriculaRepository;
 
-@GetMapping
-public String listar(Model model) {
-    model.addAttribute("listaMatriculas", matriculaRepository.findAll());
-    return "lista";
-}
+    /**
+     * Muestra el listado completo de matrículas registradas,
+     * incluyendo alumno, curso, fecha y estado de cada una.
+     *
+     * @param model modelo utilizado para pasar los datos a la vista
+     * @return nombre de la vista "lista" (lista.html)
+     */
+    @GetMapping
+    public String listar(Model model) {
+        model.addAttribute("listaMatriculas", matriculaRepository.findAll());
+        return "lista";
+    }
 
     @GetMapping("/nueva")
     public String formularioNueva(Model model) {
@@ -29,6 +41,7 @@ public String listar(Model model) {
         matriculaRepository.save(matricula);
         return "redirect:/matriculas";
     }
+
     @GetMapping("/editar/{id}")
     public String formularioEditar(@PathVariable Long id, Model model) {
         model.addAttribute("matricula", matriculaRepository.findById(id).orElseThrow());
@@ -47,9 +60,5 @@ public String listar(Model model) {
         matriculaRepository.deleteById(id);
         return "redirect:/matriculas";
     }
-
-    
-
-    
 
 }
