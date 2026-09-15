@@ -9,7 +9,15 @@
     <h1>Registrar matrícula</h1>
     <form th:action="@{/matriculas}" th:object="${matricula}" method="post">
         <label>Alumno: <input type="text" th:field="*{alumno}" required></label><br>
-        <label>DNI: <input type="text" th:field="*{dni}" required></label><br>
+        <label>DNI:     
+            <input type="text"
+            th:field="*{dni}"
+            required
+            minlength="8"
+            maxlength="8"
+            pattern="[0-9]{8}"
+            title="El DNI debe contener exactamente 8 digitos">
+       </label><br>
         <label>Curso: <input type="text" th:field="*{curso}" required></label><br>
         <label>Turno:
             <select th:field="*{turno}" required>
