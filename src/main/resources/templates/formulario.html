@@ -9,7 +9,16 @@
     <h1>Registrar matrícula</h1>
     <form th:action="@{/matriculas}" th:object="${matricula}" method="post">
         <label>Alumno: <input type="text" th:field="*{alumno}" required></label><br>
+        <label>DNI: <input type="text" th:field="*{dni}" required></label><br>
         <label>Curso: <input type="text" th:field="*{curso}" required></label><br>
+        <label>Turno:
+            <select th:field="*{turno}" required>
+                <option value="">Seleccione un turno</option>
+                <option value="Mañana">Mañana</option>
+                <option value="Tarde">Tarde</option>
+                <option value="Noche">Noche</option>
+            </select>
+        </label><br>
         <label>Fecha: <input type="date" th:field="*{fecha}" required></label><br>
         <label>Estado:
             <select th:field="*{estado}">
