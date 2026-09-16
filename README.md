@@ -28,4 +28,4 @@ git clone https://github.com/vDivCode/Academia_Plus.git
 cd Academia_Plus
 mvn spring-boot:run
 
-Luego abrir en el navegador: http://localhost:8080/matriculas
+Luego abrir en el navegador: http://localhost:8080/matriculas.
