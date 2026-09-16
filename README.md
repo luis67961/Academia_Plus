@@ -14,9 +14,9 @@ Morales Yupanqui, Luis — Backend: entidad Matricula, repositorio JPA, configur
 
 Gonzalez Alaya, Anthony — Funcionalidad de listado: mostrar datos del estudiante y estado, corrección de visualización, documentación del listado.
 
-Carranza Pacheco, Felipe — Campos adicionales y validaciones: DNI y turno en los formularios de registro y edición
+Carranza Pacheco, Felipe — Campos adicionales y validaciones: DNI y turno en los formularios de registro y edición.
 
-Ventura Guzman, David — Documentación (README) y configuración de base de datos; resolución de conflictos de fusión
+Ventura Guzman, David — Documentación (README) y configuración de base de datos; resolución de conflictos de fusión.
 
 Modelo de ramas
 
