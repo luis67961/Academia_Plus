@@ -8,11 +8,11 @@ Entidad núcleo
 Matricula: alumno, dni, curso, turno, fecha, estado
 
 Integrantes y roles:
-Villanueva Meregildo, Juan — Vistas Thymeleaf: formulario de registro, listado en tabla, vista de edición, estilos CSS y página de error personalizada
+Villanueva Meregildo, Juan — Vistas Thymeleaf: formulario de registro, listado en tabla, vista de edición, estilos CSS y página de error personalizada.
 
-Morales Yupanqui, Luis — Backend: entidad Matricula, repositorio JPA, configuración de base de datos H2, lógica de registro y gestión de matrículas
+Morales Yupanqui, Luis — Backend: entidad Matricula, repositorio JPA, configuración de base de datos H2, lógica de registro y gestión de matrículas.
 
-Gonzalez Alaya, Anthony — Funcionalidad de listado: mostrar datos del estudiante y estado, corrección de visualización, documentación del listado
+Gonzalez Alaya, Anthony — Funcionalidad de listado: mostrar datos del estudiante y estado, corrección de visualización, documentación del listado.
 
 Carranza Pacheco, Felipe — Campos adicionales y validaciones: DNI y turno en los formularios de registro y edición
 
