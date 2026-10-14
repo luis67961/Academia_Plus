@@ -7,6 +7,10 @@ import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
 
+/**
+ * Controlador encargado de gestionar las operaciones CRUD
+ * de las matriculas de estudiantes en el sistema.
+ */
 @Controller
 @RequestMapping("/matriculas")
 public class MatriculaController {
@@ -14,6 +18,13 @@ public class MatriculaController {
     @Autowired
     private MatriculaRepository matriculaRepository;
 
+    /**
+     * Muestra el listado completo de matriculas registradas,
+     * incluyendo alumno, curso, fecha y estado de cada una.
+     *
+     * @param model modelo utilizado para pasar los datos a la vista
+     * @return nombre de la vista "matriculas/list"
+     */
     @GetMapping
     public String listar(Model model) {
         // Actualizado para que coincida con la variable 'matriculas' de la nueva vista
