@@ -3,41 +3,59 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Academia Plus</title>
+    <title th:text="${pageTitle != null ? pageTitle + ' · Academia Plus' : 'Academia Plus'}">Academia Plus</title>
     <!-- Incluyendo Tailwind compilado -->
     <link th:href="@{/css/output.css}" rel="stylesheet" />
 </head>
 <body class="bg-gray-50 text-gray-800 font-sans antialiased">
-    
+
     <div class="flex h-screen overflow-hidden">
-        
+
+        <!-- Fondo oscuro al abrir el menú en móvil -->
+        <div id="sidebar-overlay" class="fixed inset-0 bg-slate-900/60 z-20 hidden md:hidden"></div>
+
         <!-- Sidebar -->
-        <aside class="w-64 bg-slate-900 text-white flex flex-col hidden md:flex">
-            <div class="flex items-center justify-center h-16 border-b border-slate-800">
-                <span class="text-xl font-bold tracking-wider text-red-500">ACADEMIA</span><span class="text-xl font-light text-white ml-1">PLUS</span>
+        <aside id="sidebar"
+               class="fixed inset-y-0 left-0 z-30 w-64 bg-slate-900 text-white flex flex-col transform -translate-x-full transition-transform duration-200 md:relative md:translate-x-0">
+            <div class="flex items-center justify-between h-16 px-4 border-b border-slate-800">
+                <a href="/dashboard" class="flex items-center">
+                    <span class="text-xl font-bold tracking-wider text-red-500">ACADEMIA</span><span class="text-xl font-light text-white ml-1">PLUS</span>
+                </a>
+                <button type="button" id="sidebar-close" class="md:hidden text-slate-400 hover:text-white" aria-label="Cerrar menú">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
             </div>
-            <nav class="flex-1 px-4 py-6 space-y-2">
-                <a href="/dashboard" class="flex items-center px-4 py-2 text-slate-300 hover:bg-slate-800 hover:text-white rounded-lg transition-colors">
+            <nav class="flex-1 px-4 py-6 space-y-1">
+                <a href="/dashboard"
+                   class="flex items-center px-4 py-2 rounded-lg transition-colors hover:bg-slate-800 hover:text-white"
+                   th:classappend="${activeNav == 'dashboard'} ? 'bg-slate-800 text-white font-medium' : 'text-slate-300'">
                     <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
                     Dashboard
                 </a>
-                <a href="/matriculas" class="flex items-center px-4 py-2 text-slate-300 hover:bg-slate-800 hover:text-white rounded-lg transition-colors">
+                <a href="/matriculas"
+                   class="flex items-center px-4 py-2 rounded-lg transition-colors hover:bg-slate-800 hover:text-white"
+                   th:classappend="${activeNav == 'matriculas'} ? 'bg-slate-800 text-white font-medium' : 'text-slate-300'">
                     <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
                     Matrículas
                 </a>
-                <a href="/pensiones" class="flex items-center px-4 py-2 text-slate-300 hover:bg-slate-800 hover:text-white rounded-lg transition-colors">
+                <a href="/pensiones"
+                   class="flex items-center px-4 py-2 rounded-lg transition-colors hover:bg-slate-800 hover:text-white"
+                   th:classappend="${activeNav == 'pensiones'} ? 'bg-slate-800 text-white font-medium' : 'text-slate-300'">
                     <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                     Pensiones y Pagos
                 </a>
             </nav>
+            <div class="px-6 py-4 border-t border-slate-800 text-xs text-slate-500">
+                Ciclo 2026 · Sistema académico
+            </div>
         </aside>
 
         <!-- Main content -->
         <div class="flex-1 flex flex-col overflow-hidden">
             <!-- Navbar -->
-            <header class="h-16 bg-white shadow-sm flex items-center justify-between px-6 z-10">
+            <header class="h-16 bg-white shadow-sm flex items-center justify-between px-4 md:px-6 z-10">
                 <div class="flex items-center">
-                    <button class="md:hidden text-gray-500 hover:text-gray-700">
+                    <button type="button" id="sidebar-open" class="md:hidden text-gray-500 hover:text-gray-700" aria-label="Abrir menú">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
                     </button>
                     <!-- Título dinámico por página -->
@@ -54,7 +72,26 @@
             </header>
 
             <!-- Dynamic Body Content -->
-            <main class="flex-1 overflow-x-hidden overflow-y-auto bg-gray-50 p-6">
+            <main class="flex-1 overflow-x-hidden overflow-y-auto bg-gray-50 p-4 md:p-6">
+
+                <!-- Mensajes de confirmación / error (flash attributes) -->
+                <div th:if="${success}" data-flash
+                     class="mb-4 flex items-start justify-between gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800" role="status">
+                    <div class="flex items-center gap-2">
+                        <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        <span th:text="${success}">Operación realizada.</span>
+                    </div>
+                    <button type="button" data-flash-close class="text-emerald-700 hover:text-emerald-900" aria-label="Cerrar">&times;</button>
+                </div>
+                <div th:if="${error}" data-flash
+                     class="mb-4 flex items-start justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">
+                    <div class="flex items-center gap-2">
+                        <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        <span th:text="${error}">Ocurrió un error.</span>
+                    </div>
+                    <button type="button" data-flash-close class="text-red-700 hover:text-red-900" aria-label="Cerrar">&times;</button>
+                </div>
+
                 <!-- Fragmento donde se inyecta el contenido de cada vista -->
                 <div th:replace="${content}">
                     Contenido por defecto...
@@ -62,5 +99,31 @@
             </main>
         </div>
     </div>
+
+    <script>
+        (function () {
+            var sidebar = document.getElementById('sidebar');
+            var overlay = document.getElementById('sidebar-overlay');
+            function abrir()  { sidebar.classList.remove('-translate-x-full'); overlay.classList.remove('hidden'); }
+            function cerrar() { sidebar.classList.add('-translate-x-full'); overlay.classList.add('hidden'); }
+            document.getElementById('sidebar-open').addEventListener('click', abrir);
+            document.getElementById('sidebar-close').addEventListener('click', cerrar);
+            overlay.addEventListener('click', cerrar);
+
+            // Cerrar mensajes flash manualmente o tras unos segundos
+            document.querySelectorAll('[data-flash]').forEach(function (el) {
+                var btn = el.querySelector('[data-flash-close]');
+                if (btn) btn.addEventListener('click', function () { el.remove(); });
+                setTimeout(function () { el.style.transition = 'opacity .4s'; el.style.opacity = '0'; setTimeout(function () { el.remove(); }, 400); }, 6000);
+            });
+
+            // Confirmación para acciones destructivas (formularios con data-confirm)
+            document.querySelectorAll('form[data-confirm]').forEach(function (form) {
+                form.addEventListener('submit', function (e) {
+                    if (!window.confirm(form.getAttribute('data-confirm'))) e.preventDefault();
+                });
+            });
+        })();
+    </script>
 </body>
 </html>
