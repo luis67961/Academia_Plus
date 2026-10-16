@@ -34,3 +34,12 @@ build/
 
 ### Node ###
 node_modules/
+
+# Base local del demo
+data/
+
+# Material privado y capturas previas de preparación
+CREDENCIALES.md
+docs/panel-demo.jpg
+docs/portal-demo.jpg
+docs/cursos-demo.jpg

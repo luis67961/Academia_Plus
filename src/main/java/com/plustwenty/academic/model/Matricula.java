@@ -18,6 +18,7 @@ import java.time.LocalDate;
  * Entidad que representa la matricula de un estudiante en un curso.
  */
 @Entity
+@jakarta.persistence.Table(uniqueConstraints=@jakarta.persistence.UniqueConstraint(columnNames={"dni","programa_id"}))
 public class Matricula {
 
     public static final String ESTADO_ACTIVA = "ACTIVA";
@@ -37,7 +38,6 @@ public class Matricula {
     @Column(length = 8)
     private String dni;
 
-    @NotBlank(message = "Seleccione un curso")
     @Column(length = 80)
     private String curso;
 
@@ -53,6 +53,10 @@ public class Matricula {
     @Column(length = 20)
     private String estado;
 
+    @jakarta.persistence.ManyToOne
+    private Programa programa;
+    public Programa getPrograma(){return programa;}
+    public void setPrograma(Programa programa){this.programa=programa;}
     public Matricula() {}
 
     public Matricula(String alumno, String dni, String curso, String turno, LocalDate fecha, String estado) {

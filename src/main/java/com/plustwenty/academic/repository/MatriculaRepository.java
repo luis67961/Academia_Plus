@@ -10,6 +10,8 @@ import java.util.Optional;
 
 public interface MatriculaRepository extends JpaRepository<Matricula, Long>, JpaSpecificationExecutor<Matricula> {
 
+    boolean existsByDniAndProgramaIdAndIdNot(String dni, Long programaId, Long id);
+
     long countByEstado(String estado);
 
     long countByFechaBetween(LocalDate desde, LocalDate hasta);
