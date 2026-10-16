@@ -41,9 +41,7 @@ import java.util.Optional;
 @RequestMapping("/matriculas")
 public class MatriculaController {
 
-    public static final List<String> CURSOS = List.of(
-            "Matemática", "Comunicación", "Ciencias", "Inglés",
-            "Razonamiento Verbal", "Razonamiento Matemático", "Historia", "Computación");
+    public static final List<String> CURSOS = List.of("Matemática", "Oratoria", "Locución", "Podcast");
     public static final List<String> TURNOS = List.of("Mañana", "Tarde", "Noche");
     public static final List<String> ESTADOS = List.of(Matricula.ESTADO_ACTIVA, Matricula.ESTADO_INACTIVA);
 
@@ -52,9 +50,14 @@ public class MatriculaController {
             "turno", "turno", "fecha", "fecha", "estado", "estado");
     private static final DateTimeFormatter FECHA_CSV = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
+    private final com.plustwenty.academic.repository.ProgramaRepository programas;
+    private final com.plustwenty.academic.service.CobranzaService cobranza;
     private final MatriculaRepository matriculaRepository;
+    private final com.plustwenty.academic.repository.CuotaRepository cuotas;
 
-    public MatriculaController(MatriculaRepository matriculaRepository) {
+    public MatriculaController(MatriculaRepository matriculaRepository, com.plustwenty.academic.repository.CuotaRepository cuotas, com.plustwenty.academic.repository.ProgramaRepository programas, com.plustwenty.academic.service.CobranzaService cobranza) {
+        this.programas=programas;this.cobranza=cobranza;
+        this.cuotas = cuotas;
         this.matriculaRepository = matriculaRepository;
     }
 
@@ -107,6 +110,7 @@ public class MatriculaController {
         return "matriculas/form";
     }
 
+    @org.springframework.transaction.annotation.Transactional
     @PostMapping("/guardar")
     public String guardar(@Valid @ModelAttribute("matricula") Matricula matricula,
                           BindingResult result, Model model, RedirectAttributes redirect) {
@@ -117,7 +121,8 @@ public class MatriculaController {
             return "matriculas/form";
         }
         matriculaRepository.save(matricula);
-        redirect.addFlashAttribute("success", "Matrícula de " + matricula.getAlumno() + " registrada correctamente.");
+        cobranza.generar(matricula,matricula.getPrograma().getCuotas(),matricula.getPrograma().getPension());
+        redirect.addFlashAttribute("success", "Matrícula registrada y cronograma de pensiones generado.");
         return "redirect:/matriculas";
     }
 
@@ -177,6 +182,10 @@ public class MatriculaController {
             redirect.addFlashAttribute("error", "La matrícula solicitada no existe.");
             return "redirect:/matriculas";
         }
+        if (cuotas.existsByMatriculaId(id)) {
+            redirect.addFlashAttribute("error", "Esta matrícula tiene cuotas. Use la opción de baja para conservar su historial.");
+            return "redirect:/matriculas";
+        }
         matriculaRepository.deleteById(id);
         redirect.addFlashAttribute("success", "Matrícula de " + encontrada.get().getAlumno() + " eliminada.");
         return "redirect:/matriculas";
@@ -227,13 +236,27 @@ public class MatriculaController {
 
     private void validarDniUnico(Matricula matricula, BindingResult result) {
         if (matricula.getDni() == null || result.hasFieldErrors("dni")) return;
-        matriculaRepository.findFirstByDni(matricula.getDni())
-                .filter(otra -> !otra.getId().equals(matricula.getId()))
-                .ifPresent(otra -> result.rejectValue("dni", "dni.duplicado",
-                        "Ya existe una matrícula registrada con este DNI (" + otra.getAlumno() + ")."));
+        if (!TURNOS.contains(matricula.getTurno())) result.rejectValue("turno","invalido","Turno inválido.");
+        if (!ESTADOS.contains(matricula.getEstado())) result.rejectValue("estado","invalido","Estado inválido.");
+        if (matricula.getPrograma()==null || matricula.getPrograma().getId()==null) {
+            result.rejectValue("programa","obligatorio","Seleccione un curso y grupo.");return;
+        }
+        var elegido=programas.findById(matricula.getPrograma().getId());
+        if(elegido.isEmpty()){result.rejectValue("programa","invalido","Curso no encontrado.");return;}
+        matricula.setPrograma(elegido.get());
+        matricula.setCurso(elegido.get().getNombre());
+        Long actual=matricula.getId()==null?-1L:matricula.getId();
+        if(matriculasConCuotasModificadas(matricula)) result.rejectValue("programa","bloqueado","No puede cambiar el curso de una matrícula con cuotas. Registre una nueva matrícula.");
+        if(matriculaRepository.existsByDniAndProgramaIdAndIdNot(matricula.getDni(),elegido.get().getId(),actual))result.rejectValue("dni","duplicado","El estudiante ya tiene matrícula en este curso y grupo.");
     }
 
+    private boolean matriculasConCuotasModificadas(Matricula m){
+        if(m.getId()==null||!cuotas.existsByMatriculaId(m.getId()))return false;
+        var anterior=matriculaRepository.findById(m.getId()).orElseThrow();
+        return anterior.getPrograma()==null||!anterior.getPrograma().getId().equals(m.getPrograma().getId());
+    }
     private void cargarCatalogos(Model model) {
+        model.addAttribute("programas",programas.findAll());
         model.addAttribute("cursos", CURSOS);
         model.addAttribute("turnos", TURNOS);
         model.addAttribute("estados", ESTADOS);

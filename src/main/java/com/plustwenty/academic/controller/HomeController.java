@@ -12,14 +12,19 @@ import java.time.YearMonth;
 public class HomeController {
 
     private final MatriculaRepository matriculaRepository;
+ private final com.plustwenty.academic.repository.CuotaRepository cuotas;
+ private final com.plustwenty.academic.repository.PagoRepository pagos;
 
-    public HomeController(MatriculaRepository matriculaRepository) {
+    public HomeController(MatriculaRepository matriculaRepository, com.plustwenty.academic.repository.CuotaRepository cuotas, com.plustwenty.academic.repository.PagoRepository pagos) {
+ this.cuotas=cuotas;this.pagos=pagos;
         this.matriculaRepository = matriculaRepository;
     }
 
     @GetMapping({"/", "/dashboard"})
     public String dashboard(Model model) {
         YearMonth mes = YearMonth.now();
+ model.addAttribute("cobrado",pagos.findAll().stream().map(com.plustwenty.academic.model.Pago::getMonto).reduce(java.math.BigDecimal.ZERO,java.math.BigDecimal::add));
+ model.addAttribute("atrasado",cuotas.findAll().stream().filter(c->c.getVencimiento().isBefore(java.time.LocalDate.now())).map(com.plustwenty.academic.model.Cuota::getSaldo).reduce(java.math.BigDecimal.ZERO,java.math.BigDecimal::add));
         model.addAttribute("totalMatriculas", matriculaRepository.count());
         model.addAttribute("activas", matriculaRepository.countByEstado(Matricula.ESTADO_ACTIVA));
         model.addAttribute("inactivas", matriculaRepository.countByEstado(Matricula.ESTADO_INACTIVA));
