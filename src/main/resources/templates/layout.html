@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title th:text="${pageTitle != null ? pageTitle + ' · Academia Plus' : 'Academia Plus'}">Academia Plus</title>
+    <title th:text="${pageTitle != null ? pageTitle + ' · Plus Twenty' : 'Plus Twenty'}">Plus Twenty</title>
     <!-- Incluyendo Tailwind compilado -->
     <link th:href="@{/css/output.css}" rel="stylesheet" />
-</head>
+<link rel="stylesheet" th:href="@{/css/demo.css}"></head>
 <body class="bg-gray-50 text-gray-800 font-sans antialiased">
 
     <div class="flex h-screen overflow-hidden">
@@ -19,7 +19,7 @@
                class="fixed inset-y-0 left-0 z-30 w-64 bg-slate-900 text-white flex flex-col transform -translate-x-full transition-transform duration-200 md:relative md:translate-x-0">
             <div class="flex items-center justify-between h-16 px-4 border-b border-slate-800">
                 <a href="/dashboard" class="flex items-center">
-                    <span class="text-xl font-bold tracking-wider text-red-500">ACADEMIA</span><span class="text-xl font-light text-white ml-1">PLUS</span>
+                    <img src="/images/logo.png" alt="Plus Twenty" class="brand-logo">
                 </a>
                 <button type="button" id="sidebar-close" class="md:hidden text-slate-400 hover:text-white" aria-label="Cerrar menú">
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
@@ -44,9 +44,10 @@
                     <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                     Pensiones y Pagos
                 </a>
+                <a href="/programas" class="flex items-center px-4 py-2 rounded-lg text-slate-300 hover:bg-slate-800">Cursos y grupos</a>
             </nav>
             <div class="px-6 py-4 border-t border-slate-800 text-xs text-slate-500">
-                Ciclo 2026 · Sistema académico
+                Plus Twenty · Gestión académica
             </div>
         </aside>
 
@@ -62,17 +63,18 @@
                     <h1 class="text-xl font-semibold text-gray-800 ml-4 md:ml-0" th:text="${pageTitle ?: 'Panel de Control'}">Panel de Control</h1>
                 </div>
                 <div class="flex items-center">
+                    <form method="post" th:action="@{/logout}"><button class="logout-button">Salir</button></form>
                     <div class="flex items-center space-x-3 cursor-pointer">
                         <div class="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-slate-600 font-bold">
                             U
                         </div>
-                        <span class="text-sm font-medium text-gray-700 hidden md:block">Usuario Administrativo</span>
+                        <span class="text-sm font-medium text-gray-700 hidden md:block">Administración</span>
                     </div>
                 </div>
             </header>
 
             <!-- Dynamic Body Content -->
-            <main class="flex-1 overflow-x-hidden overflow-y-auto bg-gray-50 p-4 md:p-6">
+            <main class="demo flex-1 overflow-x-hidden overflow-y-auto bg-gray-50 p-4 md:p-6">
 
                 <!-- Mensajes de confirmación / error (flash attributes) -->
                 <div th:if="${success}" data-flash
