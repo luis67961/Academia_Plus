@@ -131,3 +131,51 @@ a:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px soli
 @media(max-width: 600px) { .requests-strip { flex-wrap: wrap; gap: 10px; } .requests-strip > span:last-child { margin-left: 0; width: 100%; } .course-catalog .card { padding: 22px; } }
 .account-fields { border-top: 1px solid var(--line); padding-top: 8px; margin-top: 12px; }
 .demo .portal-payments-title { margin-top: 30px; }
+
+/* Shared forms, keyboard access and small screens. */
+[hidden] { display: none !important; }
+.skip-link { position: fixed; z-index: 100; top: -80px; left: 16px; padding: 14px 20px; background: #fff; color: #254436; border: 2px solid #315749; }
+.skip-link:focus { top: 12px; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+.demo input, .demo select, .demo textarea { font: inherit; font-size: 16px; }
+.demo textarea { display: block; width: 100%; min-height: 100px; padding: 12px; border: 1px solid #a5ad9e; border-radius: 4px; margin-top: 7px; color: var(--ink); background: white; resize: vertical; }
+.demo textarea:focus { outline: 2px solid var(--brand); outline-offset: 2px; }
+.demo input, .demo select { border-color: #a5ad9e; }
+.demo button, .demo .action-link { min-height: 44px; }
+.demo .secondary { background: #edf1eb; color: #254436; border: 1px solid #a5ad9e; }
+.demo .secondary:hover { background: #dde5d8; }
+.demo fieldset { border: 0; padding: 0; min-width: 0; }
+.demo legend { font-size: 20px; font-weight: 600; padding: 0; margin-bottom: 20px; }
+.step-status { border-bottom: 1px solid var(--line); padding-bottom: 16px; }
+.step-actions { display: flex; gap: 12px; margin-top: 16px; }
+.review-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; margin-top: 24px; }
+.student-enrollment { border-top: 1px solid var(--line); padding: 24px 0; }
+.demo caption { text-align: left; font-weight: 600; margin-bottom: 12px; }
+.cell-label { display: none; }
+.profile-access { margin-right: 16px; }
+.demo a:focus-visible, .demo input:focus-visible, .demo select:focus-visible, .demo textarea:focus-visible, .table-wrap:focus-visible { outline: 2px solid #315749; outline-offset: 3px; }
+.demo .portal-summary h2 { font-variant-numeric: tabular-nums; }
+#sidebar nav { overflow-y: auto; }
+@media (max-width: 760px) {
+    .demo .review-actions { grid-template-columns: 1fr; }
+    .demo .portal-head { gap: 14px; }
+    .demo .portal-head img { width: 115px; }
+    .demo .card { padding: 20px; }
+    .demo table, .demo tbody { display: block; width: 100%; }
+    .demo thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
+    .demo tbody tr { display: block; padding: 12px 0; border-bottom: 1px solid var(--line); }
+    .demo td { display: block; padding: 9px 0; border: 0; overflow-wrap: anywhere; }
+    .cell-label { display: block; font-size: 11px; letter-spacing: .3px; color: #62685e; margin-bottom: 5px; font-weight: 600; }
+    .demo .payment { grid-template-columns: 1fr 1fr; min-width: 0; }
+    .demo .row { align-items: stretch; }
+    .demo .row label { min-width: 0; flex-basis: 100%; }
+    .demo .row button { flex-grow: 1; }
+    .demo .form-grid { gap: 0; }
+    .profile-access { margin-right: 8px; font-size: 12px; }
+}
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; } }
+.course-selection-description { font-size: 13px; padding: 12px; background: var(--pale); overflow-wrap: anywhere; }
+@media(max-width: 760px) { .demo .text-link { display: inline-block; min-height: 44px; padding-top: 10px; padding-bottom: 10px; } }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible { outline: 2px solid #315749; outline-offset: 3px; }
+#sidebar a:focus-visible, #sidebar button:focus-visible { outline-color: #e1bc70; }
+.demo input, .demo select, .demo textarea { border-color: #7b8473; }

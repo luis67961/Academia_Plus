@@ -51,6 +51,7 @@ public class InscripcionController {
     }
     private void catalogos(Model model, java.security.Principal principal) {
         model.addAttribute("usuarioActual",principal==null ? null : principal.getName());
+        model.addAttribute("esAdmin",principal instanceof org.springframework.security.core.Authentication a && a.getAuthorities().stream().anyMatch(x->x.getAuthority().equals("ROLE_ADMIN")));
         model.addAttribute("programas",programas.findAll());
         model.addAttribute("turnos",MatriculaController.TURNOS);
     }

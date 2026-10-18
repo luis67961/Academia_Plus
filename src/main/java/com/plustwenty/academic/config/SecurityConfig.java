@@ -15,7 +15,7 @@ public class SecurityConfig {
     @Bean SecurityFilterChain security(HttpSecurity http)throws Exception {
         return http.authorizeHttpRequests(a->a
                 .dispatcherTypeMatchers(jakarta.servlet.DispatcherType.ERROR).permitAll()
-                .requestMatchers("/css/**","/images/**","/estilos.css","/login","/","/cursos","/inscripcion","/inscripcion/recibida").permitAll()
+                .requestMatchers("/css/**","/js/**","/images/**","/estilos.css","/login","/","/cursos","/inscripcion","/inscripcion/recibida").permitAll()
                 .requestMatchers("/portal","/portal/**").hasAnyRole("PADRE","ESTUDIANTE")
                 .requestMatchers("/perfil","/perfil/**").authenticated()
                 .anyRequest().hasRole("ADMIN"))

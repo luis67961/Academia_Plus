@@ -6,7 +6,7 @@
     <title th:text="${pageTitle != null ? pageTitle + ' · Plus Twenty' : 'Plus Twenty'}">Plus Twenty</title>
     <!-- Incluyendo Tailwind compilado -->
     <link th:href="@{/css/output.css}" rel="stylesheet" />
-<link rel="stylesheet" th:href="@{/css/demo.css}"></head>
+<link rel="stylesheet" th:href="@{/css/demo.css}"><script src="/js/interfaz.js" defer></script></head>
 <body class="bg-gray-50 text-gray-800 font-sans antialiased">
 
     <div class="flex h-screen overflow-hidden">
@@ -46,7 +46,7 @@
                 </a>
                 <a href="/programas" th:attr="aria-current=${activeNav == 'programas' ? 'page' : null}" class="flex items-center px-4 py-2 rounded-lg text-slate-300 hover:bg-slate-800">Cursos y grupos</a>
                 <a href="/solicitudes" th:attr="aria-current=${activeNav == 'solicitudes' ? 'page' : null}" class="flex items-center px-4 py-2 rounded-lg">Solicitudes de matrícula</a>
-            </nav>
+<a href="/estudiantes" th:attr="aria-current=${activeNav == 'estudiantes' ? 'page' : null}" class="flex items-center px-4 py-2">Estudiantes y apoderados</a><a href="/asistencia" th:attr="aria-current=${activeNav == 'asistencia' ? 'page' : null}" class="flex items-center px-4 py-2">Asistencia</a><a href="/comprobantes" th:attr="aria-current=${activeNav == 'comprobantes' ? 'page' : null}" class="flex items-center px-4 py-2">Revisar comprobantes</a>            </nav>
             <div class="px-6 py-4 border-t border-slate-800 text-xs text-slate-500">
                 Plus Twenty · Gestión académica
             </div>
@@ -64,7 +64,7 @@
                     <h1 class="text-xl font-semibold text-gray-800 ml-4 md:ml-0" th:text="${pageTitle ?: 'Panel de Control'}">Panel de Control</h1>
                 </div>
                 <div class="flex items-center">
-                    <form method="post" th:action="@{/logout}"><button class="logout-button">Salir</button></form>
+                    <a class="text-link profile-access" href="/perfil">Mi perfil</a><form method="post" th:action="@{/logout}"><button class="logout-button">Salir</button></form>
                     <div class="flex items-center space-x-3 cursor-pointer">
                         <div class="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-slate-600 font-bold">
                             U
@@ -103,30 +103,6 @@
         </div>
     </div>
 
-    <script>
-        (function () {
-            var sidebar = document.getElementById('sidebar');
-            var overlay = document.getElementById('sidebar-overlay');
-            function abrir()  { sidebar.classList.remove('-translate-x-full'); overlay.classList.remove('hidden'); }
-            function cerrar() { sidebar.classList.add('-translate-x-full'); overlay.classList.add('hidden'); }
-            document.getElementById('sidebar-open').addEventListener('click', abrir);
-            document.getElementById('sidebar-close').addEventListener('click', cerrar);
-            overlay.addEventListener('click', cerrar);
 
-            // Cerrar mensajes flash manualmente o tras unos segundos
-            document.querySelectorAll('[data-flash]').forEach(function (el) {
-                var btn = el.querySelector('[data-flash-close]');
-                if (btn) btn.addEventListener('click', function () { el.remove(); });
-                setTimeout(function () { el.style.transition = 'opacity .4s'; el.style.opacity = '0'; setTimeout(function () { el.remove(); }, 400); }, 6000);
-            });
-
-            // Confirmación para acciones destructivas (formularios con data-confirm)
-            document.querySelectorAll('form[data-confirm]').forEach(function (form) {
-                form.addEventListener('submit', function (e) {
-                    if (!window.confirm(form.getAttribute('data-confirm'))) e.preventDefault();
-                });
-            });
-        })();
-    </script>
 </body>
 </html>
