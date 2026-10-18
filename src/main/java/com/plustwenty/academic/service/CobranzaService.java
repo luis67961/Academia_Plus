@@ -22,7 +22,14 @@ public class CobranzaService {
   if(!List.of("Efectivo","Yape","Plin","Transferencia").contains(medio))throw new IllegalArgumentException("Seleccione un medio de pago válido.");
   if(referencia!=null&&referencia.length()>100)throw new IllegalArgumentException("La referencia admite hasta 100 caracteres.");
   if(!"Efectivo".equals(medio)&&(referencia==null||referencia.isBlank()))throw new IllegalArgumentException("Ingrese el número de operación.");
+  if(!"Efectivo".equals(medio)){
+   referencia=referencia.trim().toUpperCase(java.util.Locale.ROOT);
+   if(pagos.existsByMedioAndReferenciaIgnoreCase(medio,referencia))throw new IllegalArgumentException("El número de operación ya fue registrado para este medio de pago.");
+  }
   c.setPagado(c.getPagado().add(monto));cuotas.saveAndFlush(c);
-  Pago p=new Pago();p.setCuota(c);p.setMonto(monto);p.setMedio(medio);p.setReferencia(referencia);p.setFecha(LocalDateTime.now());return pagos.save(p);
+  Pago p=new Pago();p.setCuota(c);p.setMonto(monto);p.setMedio(medio);p.setReferencia(referencia);p.setFecha(LocalDateTime.now());
+  if(!"Efectivo".equals(medio))p.setClaveOperacion(medio+":"+referencia);
+  var auth=org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();if(auth!=null)p.setRegistradoPor(auth.getName());
+  return pagos.saveAndFlush(p);
  }
 }

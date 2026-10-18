@@ -13,7 +13,9 @@ public class PortalController {
     private final CuotaRepository cuotas;
     private final PagoRepository pagos;
     private final SolicitudRepository solicitudes;
-    public PortalController(MatriculaRepository m,CuotaRepository c,PagoRepository p,SolicitudRepository s, com.plustwenty.academic.service.PortalService acceso) { this.acceso=acceso;
+    private final ComprobanteRepository comprobantes;
+    private final AsistenciaRepository asistencias;
+    public PortalController(MatriculaRepository m,CuotaRepository c,PagoRepository p,SolicitudRepository s, com.plustwenty.academic.service.PortalService acceso,ComprobanteRepository comprobantes,AsistenciaRepository asistencias) { this.comprobantes=comprobantes;this.asistencias=asistencias; this.acceso=acceso;
         matriculas=m; cuotas=c; pagos=p; solicitudes=s;
     }
     @GetMapping("/login") public String login(){return "login";}
@@ -30,6 +32,8 @@ public class PortalController {
         model.addAttribute("usuario",usuario);
         model.addAttribute("misSolicitudes",propias);
         model.addAttribute("detalles",detalles);
+        model.addAttribute("misComprobantes",comprobantes.findByCuentaUsuarioOrderByFechaDesc(usuario));
+        model.addAttribute("misAsistencias",inscritas.stream().flatMap(m->asistencias.findByMatriculaIdOrderByFechaDesc(m.getId()).stream()).sorted(java.util.Comparator.comparing(Asistencia::getFecha).reversed()).toList());
         return "portal";
     }
 }
