@@ -7,7 +7,7 @@ import java.time.LocalDateTime;
 
 @Entity @Getter @Setter
 public class Solicitud {
-    public enum Estado { PENDIENTE, CONFIRMADA }
+    public enum Estado { PENDIENTE, CONFIRMADA, RECHAZADA, CANCELADA }
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id;
     @Column(nullable = false, length = 120) private String alumno;
     @Column(nullable = false, length = 8) private String dni;
@@ -19,4 +19,7 @@ public class Solicitud {
     @Enumerated(EnumType.STRING) @Column(nullable = false) private Estado estado = Estado.PENDIENTE;
     @OneToOne private Matricula matricula;
     @ManyToOne private Cuenta cuenta;
+    @Column(length=500) private String motivo;
+    private String revisadaPor;
+    private LocalDateTime fechaRevision;
 }

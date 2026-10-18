@@ -9,7 +9,7 @@
             <span class="eyebrow" th:text="${p.grupo}">Grupo</span><h2 th:text="${p.nombre}">Curso</h2>
             <p th:text="${p.cursos}">Contenido del curso</p>
             <div class="course-facts"><span>Horario</span><strong th:text="${p.horario}"></strong><span>Pensión</span><strong th:text="${'S/ ' + #numbers.formatDecimal(p.pension,1,2) + ' · ' + p.cuotas + ' cuotas'}"></strong></div>
-            <a class="action-link" th:href="@{/inscripcion(programaId=${p.id})}" th:attr="aria-label=${'Quiero matricularme en ' + p.nombre + ' · ' + p.grupo}">Quiero matricularme <span aria-hidden="true">→</span></a>
+            <p th:text="${p.inscripcionesAbiertas ? vacantes[p.id] + ' vacantes disponibles' : 'Inscripciones cerradas'}"></p><a th:if="${p.inscripcionesAbiertas and vacantes[p.id] > 0}" class="action-link" th:href="@{/inscripcion(programaId=${p.id})}" th:attr="aria-label=${'Quiero matricularme en ' + p.nombre + ' · ' + p.grupo}">Quiero matricularme <span aria-hidden="true">→</span></a>
         </article>
     </section>
     <section class="card" th:if="${#lists.isEmpty(programas)}"><h2>Estamos preparando los próximos grupos.</h2><p>Consulta con administración para conocer las próximas fechas.</p></section>

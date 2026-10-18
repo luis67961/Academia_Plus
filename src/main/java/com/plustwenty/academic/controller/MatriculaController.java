@@ -245,6 +245,12 @@ public class MatriculaController {
         if(elegido.isEmpty()){result.rejectValue("programa","invalido","Curso no encontrado.");return;}
         matricula.setPrograma(elegido.get());
         matricula.setCurso(elegido.get().getNombre());
+        if(matricula.getId()==null){
+            var grupo=programas.findForUpdateById(elegido.get().getId()).orElseThrow();
+            if(!grupo.isInscripcionesAbiertas()||matriculaRepository.countByProgramaIdAndEstado(grupo.getId(),Matricula.ESTADO_ACTIVA)>=grupo.getCupo())
+                result.rejectValue("programa","lleno","El grupo está cerrado o sin vacantes.");
+            if(!grupo.getTurno().equals(matricula.getTurno()))result.rejectValue("turno","invalido","El turno debe coincidir con el grupo elegido.");
+        }
         Long actual=matricula.getId()==null?-1L:matricula.getId();
         if(matriculasConCuotasModificadas(matricula)) result.rejectValue("programa","bloqueado","No puede cambiar el curso de una matrícula con cuotas. Registre una nueva matrícula.");
         if(matriculaRepository.existsByDniAndProgramaIdAndIdNot(matricula.getDni(),elegido.get().getId(),actual))result.rejectValue("dni","duplicado","El estudiante ya tiene matrícula en este curso y grupo.");
