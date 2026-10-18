@@ -1,13 +1,14 @@
 <!DOCTYPE html>
 <html lang="es" xmlns:th="http://www.thymeleaf.org"
-th:replace="~{layout :: html(content=~{::div}, pageTitle='Dashboard General', activeNav='dashboard')}">
+th:replace="~{layout :: html(content=~{::div}, pageTitle='Administración', activeNav='dashboard')}">
 <head>
     <title>Dashboard</title>
 </head>
 <body>
     <div>
-        <section class="hero"><span class="eyebrow">PLUS TWENTY · ADMINISTRACIÓN</span><h2>Todo listo para seguir creciendo.</h2><p>Gestiona tus matrículas, cursos y pensiones desde un solo lugar.</p></section>
-        <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mb-6">
+        <section class="hero"><span class="eyebrow">PLUS TWENTY · ADMINISTRACIÓN</span><h2>La academia, al día.</h2><p>Matrículas recientes, cobros y cuentas pendientes.</p></section>
+        <a href="/solicitudes" class="requests-strip"><span>Solicitudes por revisar</span><strong th:text="${solicitudesPendientes}">0</strong><span>Ver solicitudes →</span></a>
+        <div class="dashboard-stats grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mb-6">
 
             <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
                 <div class="flex items-center">
@@ -103,20 +104,20 @@ th:replace="~{layout :: html(content=~{::div}, pageTitle='Dashboard General', ac
 
             <!-- Accesos rápidos -->
             <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
-                <h3 class="text-lg font-semibold text-gray-800 mb-2">Módulo Central de Operaciones</h3>
+                <h3 class="text-lg font-semibold text-gray-800 mb-2">Gestiones frecuentes</h3>
                 <p class="text-gray-500 text-sm mb-6">
-                    Bienvenido al sistema de Plus Twenty. Desde aquí el personal administrativo gestiona matrículas y pagos de forma intuitiva.
+                    Inscribe a un estudiante o revisa los pagos pendientes.
                 </p>
                 <div class="flex flex-col gap-3">
                     <a th:href="@{/matriculas/nuevo}" class="inline-flex items-center justify-center bg-red-600 hover:bg-red-700 text-white font-medium py-2.5 px-4 rounded-lg transition-colors">
                         <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
-                        Registrar Nueva Matrícula
+                        Nueva matrícula
                     </a>
                     <a th:href="@{/matriculas(estado='INACTIVA')}" class="inline-flex items-center justify-center bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 font-medium py-2.5 px-4 rounded-lg transition-colors">
                         Ver matrículas inactivas
                     </a>
                     <a th:href="@{/pensiones}" class="inline-flex items-center justify-center bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 font-medium py-2.5 px-4 rounded-lg transition-colors">
-                        Ver Estado de Cuenta
+                        Consultar pensiones
                     </a>
                 </div>
             </div>
