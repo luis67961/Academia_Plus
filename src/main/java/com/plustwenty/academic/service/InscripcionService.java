@@ -51,6 +51,7 @@ public class InscripcionService {
             cuenta.setRol("ESTUDIANTE"); cuentas.saveAndFlush(cuenta);
         }
         s.setCuenta(cuenta);
+        if(cuenta.getNombre()==null) { cuenta.setNombre(s.getContacto()); cuenta.setTelefono(s.getTelefono()); }
         solicitudes.save(s);
     }
     @Transactional
@@ -62,7 +63,7 @@ public class InscripcionService {
         if(matriculas.existsByDniAndProgramaIdAndIdNot(s.getDni(),p.getId(),-1L))
             throw new IllegalArgumentException("El estudiante ya tiene una matrícula en este grupo. Revisa sus matrículas antes de continuar.");
         var m=new Matricula(s.getAlumno(),s.getDni(),p.getNombre(),s.getTurno(),LocalDate.now(),Matricula.ESTADO_ACTIVA);
-        m.setPrograma(p); matriculas.saveAndFlush(m);
+        m.setPrograma(p); m.setCuenta(s.getCuenta()); matriculas.saveAndFlush(m);
         cobranza.generar(m,p.getCuotas(),p.getPension());
         s.setMatricula(m); s.setEstado(Solicitud.Estado.CONFIRMADA);
     }

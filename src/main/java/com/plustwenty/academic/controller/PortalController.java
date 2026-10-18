@@ -9,10 +9,11 @@ import java.util.*;
 @Controller
 public class PortalController {
     private final MatriculaRepository matriculas;
+    private final com.plustwenty.academic.service.PortalService acceso;
     private final CuotaRepository cuotas;
     private final PagoRepository pagos;
     private final SolicitudRepository solicitudes;
-    public PortalController(MatriculaRepository m,CuotaRepository c,PagoRepository p,SolicitudRepository s) {
+    public PortalController(MatriculaRepository m,CuotaRepository c,PagoRepository p,SolicitudRepository s, com.plustwenty.academic.service.PortalService acceso) { this.acceso=acceso;
         matriculas=m; cuotas=c; pagos=p; solicitudes=s;
     }
     @GetMapping("/login") public String login(){return "login";}
@@ -20,13 +21,12 @@ public class PortalController {
     @GetMapping("/portal") public String portal(Model model,Principal principal) {
         String usuario=principal.getName();
         var propias=solicitudes.findByCuentaUsuarioOrderByFechaDescIdDesc(usuario);
-        var inscritas=new LinkedHashMap<Long,Matricula>();
-        for(var s:propias) if(s.getMatricula()!=null) inscritas.put(s.getMatricula().getId(),s.getMatricula());
-        // These reserved demo logins retain their original fictitious student only.
-        if(Set.of("padre","estudiante").contains(usuario))
-            matriculas.findFirstByDni("72834912").ifPresent(m->inscritas.put(m.getId(),m));
-        var detalles=inscritas.values().stream().map(m->new Detalle(m,
+        var inscritas=acceso.matriculas(usuario);
+        var detalles=inscritas.stream().map(m->new Detalle(m,
             cuotas.findByMatriculaIdOrderByNumero(m.getId()),pagos.findByCuotaMatriculaIdOrderByFechaDesc(m.getId()))).toList();
+        var todas=detalles.stream().flatMap(d->d.cuotas().stream()).toList();
+        model.addAttribute("saldoTotal",todas.stream().map(Cuota::getSaldo).reduce(java.math.BigDecimal.ZERO,java.math.BigDecimal::add));
+        model.addAttribute("proximaCuota",todas.stream().filter(c->c.getSaldo().signum()>0).min(java.util.Comparator.comparing(Cuota::getVencimiento)).orElse(null));
         model.addAttribute("usuario",usuario);
         model.addAttribute("misSolicitudes",propias);
         model.addAttribute("detalles",detalles);

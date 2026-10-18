@@ -40,6 +40,18 @@ class AccesoWebTests {
   var token=Pattern.compile("name=\"_csrf\"[^>]*value=\"([^\"]+)\"").matcher(html);
   assertTrue(token.find());return URLEncoder.encode(token.group(1),java.nio.charset.StandardCharsets.UTF_8);
  }
+ @Test void perfilEditaSoloCuentaPropiaYCambiaClave()throws Exception {
+  var cuenta=new com.plustwenty.academic.model.Cuenta();cuenta.setUsuario("perfil.prueba");cuenta.setClaveHash(encoder.encode("Original2026!"));cuenta.setRol("ESTUDIANTE");cuentas.save(cuenta);
+  var c=cliente();login(c,"perfil.prueba","Original2026!");
+  String html=get(c,"/perfil").body();assertTrue(html.contains("Mis datos."));
+  assertEquals(302,post(c,"/perfil","nombre=Contacto+Prueba&telefono=999888777&email=perfil%40example.com&_csrf="+csrf(html)).statusCode());
+  assertEquals("Contacto Prueba",cuentas.findByUsuario("perfil.prueba").orElseThrow().getNombre());
+  assertEquals(302,post(c,"/perfil/clave","actual=Incorrecta&nueva=NuevaSegura2026!&repetir=NuevaSegura2026!&_csrf="+csrf(get(c,"/perfil").body())).statusCode());
+  assertTrue(encoder.matches("Original2026!",cuentas.findByUsuario("perfil.prueba").orElseThrow().getClaveHash()));
+  var r=post(c,"/perfil/clave","actual=Original2026!&nueva=NuevaSegura2026!&repetir=NuevaSegura2026!&_csrf="+csrf(get(c,"/perfil").body()));
+  assertEquals(302,r.statusCode());assertTrue(r.headers().firstValue("Location").orElse("").contains("claveActualizada"));
+  assertEquals(302,get(c,"/perfil").statusCode());login(cliente(),"perfil.prueba","NuevaSegura2026!");
+ }
  @Test void solicitudPublicaSeConfirmaUnaSolaVezYGeneraCuotas()throws Exception {
   var publico=cliente();
   for(String ruta:new String[]{"/","/cursos","/inscripcion","/inscripcion/recibida"}) assertEquals(200,get(publico,ruta).statusCode(),ruta);

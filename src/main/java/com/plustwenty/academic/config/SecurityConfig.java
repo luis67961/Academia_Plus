@@ -17,6 +17,7 @@ public class SecurityConfig {
                 .dispatcherTypeMatchers(jakarta.servlet.DispatcherType.ERROR).permitAll()
                 .requestMatchers("/css/**","/images/**","/estilos.css","/login","/","/cursos","/inscripcion","/inscripcion/recibida").permitAll()
                 .requestMatchers("/portal","/portal/**").hasAnyRole("PADRE","ESTUDIANTE")
+                .requestMatchers("/perfil","/perfil/**").authenticated()
                 .anyRequest().hasRole("ADMIN"))
             .formLogin(f->f.loginPage("/login").successHandler((request,response,auth)->response.sendRedirect(
                 auth.getAuthorities().stream().anyMatch(a->a.getAuthority().equals("ROLE_ADMIN"))?"/dashboard":"/portal")).permitAll())
