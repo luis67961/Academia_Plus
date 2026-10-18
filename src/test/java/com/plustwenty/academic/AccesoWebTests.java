@@ -25,7 +25,7 @@ class AccesoWebTests {
  }
  @Test void administradorRenderizaPantallasYRequiereCsrf()throws Exception{
   var c=cliente();assertEquals(302,get(c,"/matriculas").statusCode());login(c,"admin","DemoAdmin2026!");
-  for(String ruta:new String[]{"/dashboard","/matriculas","/matriculas/nuevo","/programas","/pensiones","/pensiones?id=1","/solicitudes"}){var r=get(c,ruta);assertEquals(200,r.statusCode(),ruta);assertFalse(r.body().contains("Oops"),ruta);}
+  for(String ruta:new String[]{"/dashboard","/matriculas","/matriculas/nuevo","/programas","/programas/1/editar","/asistencia?programaId=1","/estudiantes","/estudiantes/72834912","/perfil","/pensiones","/pensiones?id=1","/solicitudes"}){var r=get(c,ruta);assertEquals(200,r.statusCode(),ruta);assertFalse(r.body().contains("Oops"),ruta);}
   assertEquals(403,post(c,"/pensiones/pagar","cuotaId=1&monto=1&medio=Efectivo").statusCode());
  }
  @Test void familiasConsultanSoloSuAlumnoYNoAdministran()throws Exception{
@@ -84,6 +84,7 @@ class AccesoWebTests {
   String pendiente=get(alumno,"/portal").body();assertTrue(pendiente.contains("Estudiante Solicitud"));
   assertTrue(pendiente.contains("Pendiente de revisión"));assertFalse(pendiente.contains("María Fernández"));
   assertFalse(pendiente.contains("Mis pensiones"));assertEquals(403,get(alumno,"/solicitudes").statusCode());
+  assertEquals(200,get(alumno,"/portal/solicitudes/"+solicitud.getId()).statusCode());
   assertEquals(302,post(publico,"/solicitudes/"+solicitud.getId()+"/confirmar","_csrf="+token).statusCode());
   var admin=cliente();login(admin,"admin","DemoAdmin2026!");
   String html=get(admin,"/solicitudes").body();assertTrue(html.contains("Estudiante Solicitud"));
@@ -101,6 +102,7 @@ class AccesoWebTests {
   String datos2=datos.replace("Estudiante+Solicitud","Otro+Estudiante").replace("90909090","90909091").replace("alumno.nuevo","alumno.otro").replace(token,token2);
   assertEquals(302,post(segundo,"/inscripcion",datos2).statusCode());login(segundo,"alumno.otro","PruebaAlumno2026!");
   String ajeno=get(segundo,"/portal").body();assertTrue(ajeno.contains("Otro Estudiante"));assertFalse(ajeno.contains("Estudiante Solicitud"));assertFalse(ajeno.contains("Mis pensiones"));
+  assertEquals(404,get(segundo,"/portal/solicitudes/"+solicitud.getId()).statusCode());
   String segundaSolicitud=datos2.replace("programaId="+p.getId(),"programaId="+programas.findAll().get(1).getId()).replace(token2,csrf(get(segundo,"/inscripcion").body()));
   assertEquals(302,post(segundo,"/inscripcion",segundaSolicitud).statusCode());
   assertEquals(2,solicitudes.findByCuentaUsuarioOrderByFechaDescIdDesc("alumno.otro").size());
