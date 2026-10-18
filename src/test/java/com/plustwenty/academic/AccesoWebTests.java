@@ -13,6 +13,7 @@ class AccesoWebTests {
  @org.springframework.beans.factory.annotation.Autowired com.plustwenty.academic.repository.CuotaRepository cuotas;
  @org.springframework.beans.factory.annotation.Autowired com.plustwenty.academic.repository.ProgramaRepository programas;
  @org.springframework.beans.factory.annotation.Autowired com.plustwenty.academic.repository.CuentaRepository cuentas;
+ @org.springframework.beans.factory.annotation.Autowired com.plustwenty.academic.repository.ComprobanteRepository comprobantes;
  @org.springframework.beans.factory.annotation.Autowired org.springframework.security.crypto.password.PasswordEncoder encoder;
  @Value("${local.server.port}") int port;
  private HttpClient cliente(){return HttpClient.newBuilder().cookieHandler(new CookieManager(null,CookiePolicy.ACCEPT_ALL)).build();}
@@ -25,7 +26,9 @@ class AccesoWebTests {
  }
  @Test void administradorRenderizaPantallasYRequiereCsrf()throws Exception{
   var c=cliente();assertEquals(302,get(c,"/matriculas").statusCode());login(c,"admin","DemoAdmin2026!");
-  for(String ruta:new String[]{"/dashboard","/matriculas","/matriculas/nuevo","/programas","/pensiones","/pensiones?id=1","/solicitudes"}){var r=get(c,ruta);assertEquals(200,r.statusCode(),ruta);assertFalse(r.body().contains("Oops"),ruta);}
+  assertEquals(200,get(cliente(),"/js/interfaz.js").statusCode());
+  assertTrue(get(c,"/inscripcion?programaId=1").body().contains("Estás usando la cuenta de administración."));
+  for(String ruta:new String[]{"/dashboard","/matriculas","/matriculas/nuevo","/programas","/programas/1/editar","/asistencia?programaId=1","/estudiantes","/estudiantes/72834912","/perfil","/pensiones","/pensiones?id=1","/solicitudes","/comprobantes"}){var r=get(c,ruta);assertEquals(200,r.statusCode(),ruta);assertFalse(r.body().contains("Oops"),ruta);}
   assertEquals(403,post(c,"/pensiones/pagar","cuotaId=1&monto=1&medio=Efectivo").statusCode());
  }
  @Test void familiasConsultanSoloSuAlumnoYNoAdministran()throws Exception{
@@ -39,6 +42,18 @@ class AccesoWebTests {
  private String csrf(String html) {
   var token=Pattern.compile("name=\"_csrf\"[^>]*value=\"([^\"]+)\"").matcher(html);
   assertTrue(token.find());return URLEncoder.encode(token.group(1),java.nio.charset.StandardCharsets.UTF_8);
+ }
+ @Test void perfilEditaSoloCuentaPropiaYCambiaClave()throws Exception {
+  var cuenta=new com.plustwenty.academic.model.Cuenta();cuenta.setUsuario("perfil.prueba");cuenta.setClaveHash(encoder.encode("Original2026!"));cuenta.setRol("ESTUDIANTE");cuentas.save(cuenta);
+  var c=cliente();login(c,"perfil.prueba","Original2026!");
+  String html=get(c,"/perfil").body();assertTrue(html.contains("Mis datos."));
+  assertEquals(302,post(c,"/perfil","nombre=Contacto+Prueba&telefono=999888777&email=perfil%40example.com&_csrf="+csrf(html)).statusCode());
+  assertEquals("Contacto Prueba",cuentas.findByUsuario("perfil.prueba").orElseThrow().getNombre());
+  assertEquals(302,post(c,"/perfil/clave","actual=Incorrecta&nueva=NuevaSegura2026!&repetir=NuevaSegura2026!&_csrf="+csrf(get(c,"/perfil").body())).statusCode());
+  assertTrue(encoder.matches("Original2026!",cuentas.findByUsuario("perfil.prueba").orElseThrow().getClaveHash()));
+  var r=post(c,"/perfil/clave","actual=Original2026!&nueva=NuevaSegura2026!&repetir=NuevaSegura2026!&_csrf="+csrf(get(c,"/perfil").body()));
+  assertEquals(302,r.statusCode());assertTrue(r.headers().firstValue("Location").orElse("").contains("claveActualizada"));
+  assertEquals(302,get(c,"/perfil").statusCode());login(cliente(),"perfil.prueba","NuevaSegura2026!");
  }
  @Test void solicitudPublicaSeConfirmaUnaSolaVezYGeneraCuotas()throws Exception {
   var publico=cliente();
@@ -72,6 +87,7 @@ class AccesoWebTests {
   String pendiente=get(alumno,"/portal").body();assertTrue(pendiente.contains("Estudiante Solicitud"));
   assertTrue(pendiente.contains("Pendiente de revisión"));assertFalse(pendiente.contains("María Fernández"));
   assertFalse(pendiente.contains("Mis pensiones"));assertEquals(403,get(alumno,"/solicitudes").statusCode());
+  assertEquals(200,get(alumno,"/portal/solicitudes/"+solicitud.getId()).statusCode());
   assertEquals(302,post(publico,"/solicitudes/"+solicitud.getId()+"/confirmar","_csrf="+token).statusCode());
   var admin=cliente();login(admin,"admin","DemoAdmin2026!");
   String html=get(admin,"/solicitudes").body();assertTrue(html.contains("Estudiante Solicitud"));
@@ -82,6 +98,15 @@ class AccesoWebTests {
   var cronograma=cuotas.findByMatriculaIdOrderByNumero(confirmada.getMatricula().getId());
   assertEquals(p.getCuotas(),cronograma.size());assertEquals(0,p.getPension().compareTo(cronograma.getFirst().getMonto()));
   String portal=get(alumno,"/portal").body();assertTrue(portal.contains("Matrícula confirmada"));assertTrue(portal.contains("Mis pensiones"));assertFalse(portal.contains("María Fernández"));
+  assertEquals(200,get(alumno,"/portal/comprobantes/nuevo?cuotaId="+cronograma.getFirst().getId()).statusCode());
+  var enviadaArchivo=enviarArchivo(alumno,cronograma.getFirst().getId(),get(alumno,"/portal/comprobantes/nuevo?cuotaId="+cronograma.getFirst().getId()).body());assertEquals(302,enviadaArchivo.statusCode());
+  assertTrue(get(alumno,"/portal").body().contains("WEB-OPERACION"));
+  var comprobante=comprobantes.findAllByOrderByFechaDesc().getFirst();
+  assertEquals(200,get(admin,"/comprobantes").statusCode());assertEquals(200,get(alumno,"/portal/comprobantes/"+comprobante.getId()+"/archivo").statusCode());
+  assertEquals(302,post(admin,"/comprobantes/"+comprobante.getId()+"/revisar","aprobar=true&_csrf="+csrf(get(admin,"/comprobantes").body())).statusCode());
+  var pago=comprobantes.findById(comprobante.getId()).orElseThrow().getPago();assertNotNull(pago);
+  assertEquals(200,get(alumno,"/portal/constancias/"+pago.getId()).statusCode());
+  var descarga=get(alumno,"/portal/constancias/"+pago.getId()+"?descargar=true");assertEquals(200,descarga.statusCode());assertTrue(descarga.headers().firstValue("Content-Disposition").orElse("").contains("attachment"));
   var otraSesion=cliente();login(otraSesion,"alumno.nuevo","PruebaAlumno2026!");assertTrue(get(otraSesion,"/portal").body().contains("Mis pensiones"));
   assertEquals(302,post(admin,"/solicitudes/"+solicitud.getId()+"/confirmar","_csrf="+csrf(get(admin,"/solicitudes").body())).statusCode());
   assertEquals(antes+1,matriculas.count());assertEquals(cuotasAntes+p.getCuotas(),cuotas.count());
@@ -89,8 +114,18 @@ class AccesoWebTests {
   String datos2=datos.replace("Estudiante+Solicitud","Otro+Estudiante").replace("90909090","90909091").replace("alumno.nuevo","alumno.otro").replace(token,token2);
   assertEquals(302,post(segundo,"/inscripcion",datos2).statusCode());login(segundo,"alumno.otro","PruebaAlumno2026!");
   String ajeno=get(segundo,"/portal").body();assertTrue(ajeno.contains("Otro Estudiante"));assertFalse(ajeno.contains("Estudiante Solicitud"));assertFalse(ajeno.contains("Mis pensiones"));
+  assertEquals(404,get(segundo,"/portal/solicitudes/"+solicitud.getId()).statusCode());
+  assertEquals(404,get(segundo,"/portal/comprobantes/nuevo?cuotaId="+cronograma.getFirst().getId()).statusCode());
+  assertEquals(404,get(segundo,"/portal/comprobantes/"+comprobante.getId()+"/archivo").statusCode());assertEquals(404,get(segundo,"/portal/constancias/"+pago.getId()).statusCode());
   String segundaSolicitud=datos2.replace("programaId="+p.getId(),"programaId="+programas.findAll().get(1).getId()).replace(token2,csrf(get(segundo,"/inscripcion").body()));
   assertEquals(302,post(segundo,"/inscripcion",segundaSolicitud).statusCode());
   assertEquals(2,solicitudes.findByCuentaUsuarioOrderByFechaDescIdDesc("alumno.otro").size());
+ }
+ private HttpResponse<String> enviarArchivo(HttpClient cliente,Long cuotaId,String html)throws Exception{
+  String boundary="AcademiaBoundary2026";var out=new java.io.ByteArrayOutputStream();
+  var campos=java.util.Map.of("cuotaId",cuotaId.toString(),"monto","10.00","medio","Yape","referencia","WEB-OPERACION","_csrf",URLDecoder.decode(csrf(html),java.nio.charset.StandardCharsets.UTF_8));
+  for(var e:campos.entrySet())out.write(("--"+boundary+"\r\nContent-Disposition: form-data; name=\""+e.getKey()+"\"\r\n\r\n"+e.getValue()+"\r\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+  out.write(("--"+boundary+"\r\nContent-Disposition: form-data; name=\"archivo\"; filename=\"pago.pdf\"\r\nContent-Type: application/pdf\r\n\r\n%PDF-1.4 prueba\r\n--"+boundary+"--\r\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+  return cliente.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+"/portal/comprobantes")).header("Content-Type","multipart/form-data; boundary="+boundary).POST(HttpRequest.BodyPublishers.ofByteArray(out.toByteArray())).build(),HttpResponse.BodyHandlers.ofString());
  }
 }

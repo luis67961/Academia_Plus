@@ -12,13 +12,14 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 @Controller
 public class InscripcionController {
     private final ProgramaRepository programas;
+    private final com.plustwenty.academic.service.ProgramaService oferta;
     private final SolicitudRepository solicitudes;
     private final InscripcionService inscripciones;
-    public InscripcionController(ProgramaRepository p, SolicitudRepository s, InscripcionService i) {
+    public InscripcionController(ProgramaRepository p, SolicitudRepository s, InscripcionService i, com.plustwenty.academic.service.ProgramaService oferta) { this.oferta=oferta;
         programas=p; solicitudes=s; inscripciones=i;
     }
     @GetMapping({"/", "/cursos"})
-    public String cursos(Model model) { model.addAttribute("programas",programas.findAll()); return "cursos"; }
+    public String cursos(Model model) { model.addAttribute("programas",programas.findAll()); model.addAttribute("vacantes",programas.findAll().stream().collect(java.util.stream.Collectors.toMap(com.plustwenty.academic.model.Programa::getId,oferta::disponibles))); return "cursos"; }
     @GetMapping("/inscripcion")
     public String formulario(@RequestParam(required=false) Long programaId, Model model, java.security.Principal principal) {
         var form=new InscripcionForm(); form.setProgramaId(programaId);
@@ -37,8 +38,8 @@ public class InscripcionController {
     @GetMapping("/inscripcion/recibida")
     public String recibida() { return "inscripcion-recibida"; }
     @GetMapping("/solicitudes")
-    public String solicitudes(Model model) {
-        model.addAttribute("solicitudes",solicitudes.findAllByOrderByFechaDescIdDesc());
+    public String solicitudes(@RequestParam(defaultValue="") String q,@RequestParam(defaultValue="") String estado,Model model) {
+        model.addAttribute("q",q);model.addAttribute("estado",estado);model.addAttribute("solicitudes",solicitudes.findAllByOrderByFechaDescIdDesc().stream().filter(s->estado.isBlank()||s.getEstado().name().equals(estado)).filter(s->(s.getAlumno()+" "+s.getDni()+" "+s.getPrograma().getNombre()).toLowerCase(java.util.Locale.ROOT).contains(q.toLowerCase(java.util.Locale.ROOT))).toList());
         return "solicitudes";
     }
     @PostMapping("/solicitudes/{id}/confirmar")
@@ -50,6 +51,7 @@ public class InscripcionController {
     }
     private void catalogos(Model model, java.security.Principal principal) {
         model.addAttribute("usuarioActual",principal==null ? null : principal.getName());
+        model.addAttribute("esAdmin",principal instanceof org.springframework.security.core.Authentication a && a.getAuthorities().stream().anyMatch(x->x.getAuthority().equals("ROLE_ADMIN")));
         model.addAttribute("programas",programas.findAll());
         model.addAttribute("turnos",MatriculaController.TURNOS);
     }

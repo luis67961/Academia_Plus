@@ -12,4 +12,6 @@ public class Pago {
  private String medio;
  private String referencia;
  private LocalDateTime fecha;
+ @Column(unique=true,length=140) private String claveOperacion;
+ private String registradoPor;
 }

@@ -55,6 +55,9 @@ public class Matricula {
 
     @jakarta.persistence.ManyToOne
     private Programa programa;
+    @jakarta.persistence.ManyToOne private Cuenta cuenta;
+    public Cuenta getCuenta(){return cuenta;}
+    public void setCuenta(Cuenta cuenta){this.cuenta=cuenta;}
     public Programa getPrograma(){return programa;}
     public void setPrograma(Programa programa){this.programa=programa;}
     public Matricula() {}
