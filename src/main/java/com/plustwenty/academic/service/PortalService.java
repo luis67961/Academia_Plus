@@ -23,7 +23,7 @@ public class PortalService {
             if(s.getMatricula()!=null) lista.put(s.getMatricula().getId(),s.getMatricula());
         });
         if(Set.of("padre","estudiante").contains(usuario))
-            matriculas.findFirstByDni("72834912").ifPresent(m->lista.put(m.getId(),m));
+            matriculas.findFirstByDni("72834912").filter(m->m.getCuenta()==null||m.getCuenta().getUsuario().equals(usuario)).ifPresent(m->lista.put(m.getId(),m));
         return List.copyOf(lista.values());
     }
     public boolean puedeVer(String usuario,Long matriculaId) {

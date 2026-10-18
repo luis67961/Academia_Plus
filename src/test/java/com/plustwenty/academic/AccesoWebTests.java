@@ -26,6 +26,8 @@ class AccesoWebTests {
  }
  @Test void administradorRenderizaPantallasYRequiereCsrf()throws Exception{
   var c=cliente();assertEquals(302,get(c,"/matriculas").statusCode());login(c,"admin","DemoAdmin2026!");
+  assertEquals(200,get(cliente(),"/js/interfaz.js").statusCode());
+  assertTrue(get(c,"/inscripcion?programaId=1").body().contains("Estás usando la cuenta de administración."));
   for(String ruta:new String[]{"/dashboard","/matriculas","/matriculas/nuevo","/programas","/programas/1/editar","/asistencia?programaId=1","/estudiantes","/estudiantes/72834912","/perfil","/pensiones","/pensiones?id=1","/solicitudes","/comprobantes"}){var r=get(c,ruta);assertEquals(200,r.statusCode(),ruta);assertFalse(r.body().contains("Oops"),ruta);}
   assertEquals(403,post(c,"/pensiones/pagar","cuotaId=1&monto=1&medio=Efectivo").statusCode());
  }

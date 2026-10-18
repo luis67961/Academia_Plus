@@ -115,6 +115,7 @@ public class MatriculaController {
     public String guardar(@Valid @ModelAttribute("matricula") Matricula matricula,
                           BindingResult result, Model model, RedirectAttributes redirect) {
         matricula.setId(null);
+        matricula.setCuenta(null);
         validarDniUnico(matricula, result);
         if (result.hasErrors()) {
             cargarCatalogos(model);
@@ -147,6 +148,7 @@ public class MatriculaController {
             return "redirect:/matriculas";
         }
         matricula.setId(id);
+        matricula.setCuenta(matriculaRepository.findById(id).orElseThrow().getCuenta());
         validarDniUnico(matricula, result);
         if (result.hasErrors()) {
             cargarCatalogos(model);
