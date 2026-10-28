@@ -106,11 +106,17 @@ public class DataService {
         Map<String, Object> data = new LinkedHashMap<>();
         if (me != null) {
             for (String col : COLECCIONES) {
+                // Las notificaciones NO se cargan en bloque: con muchas filas tumban la app.
+                // El badge usa un COUNT y la lista se pide paginada (NotificacionController).
+                if ("notificaciones".equals(col)) {
+                    continue;
+                }
                 data.put(col, leer(col, me));
             }
         }
         out.put("me", me);
         out.put("data", data);
+        out.put("unreadCount", me == null ? 0L : notificaciones.countByUserIdAndLeidaFalse(me.id));
         return out;
     }
 

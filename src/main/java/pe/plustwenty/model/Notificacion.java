@@ -4,10 +4,14 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 
 @Entity
-@Table(name = "notificacion")
+@Table(name = "notificacion", indexes = {
+        @Index(name = "ix_notif_user", columnList = "user_id"),
+        @Index(name = "ix_notif_user_leida", columnList = "user_id, leida")
+})
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class Notificacion extends Ordenable {
 
