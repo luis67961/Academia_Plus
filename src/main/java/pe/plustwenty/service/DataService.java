@@ -221,6 +221,7 @@ public class DataService {
 
         if (actual instanceof Usuario) {
             Usuario u = (Usuario) actual;
+            validarCorreoUsuario(u);
             if (nuevaClave != null) {
                 if (nuevaClave.isBlank()) {
                     throw new ApiException(400, "La contraseña no puede estar vacía.");
@@ -322,6 +323,7 @@ public class DataService {
             }
             case "users": {
                 Usuario u = (Usuario) entidad;
+                validarCorreoUsuario(u);
                 if (esVacio(u.username)) {
                     throw new ApiException(400, "El nombre de usuario es obligatorio.");
                 }
@@ -348,6 +350,20 @@ public class DataService {
             }
             default:
                 break;
+        }
+    }
+
+    private void validarCorreoUsuario(Usuario u) {
+        if (u.email == null || u.email.isBlank()) {
+            u.email = null;
+            return;
+        }
+        u.email = u.email.trim().toLowerCase(java.util.Locale.ROOT);
+        if (u.email.length() > 254 || !u.email.matches("[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,}")) {
+            throw new ApiException(400, "Indica un correo electrónico válido.");
+        }
+        if (usuarios.findByEmailIgnoreCase(u.email).stream().anyMatch(otra -> !java.util.Objects.equals(otra.id, u.id))) {
+            throw new ApiException(409, "Este correo ya está asociado a otra cuenta.");
         }
     }
 

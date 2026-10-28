@@ -43,7 +43,7 @@ public class AuthController {
 
     @PostMapping("/login")
     public ResponseEntity<Map<String, Object>> login(@RequestBody LoginRequest req, HttpServletRequest request) {
-        String termino = req.username() == null ? "" : req.username().trim().toLowerCase();
+        String termino = req.username() == null ? "" : req.username().trim().toLowerCase(java.util.Locale.ROOT);
         Usuario u = buscar(termino);
         if (u == null || req.password() == null || u.password == null
                 || !encoder.matches(req.password(), u.password)) {
@@ -113,13 +113,13 @@ public class AuthController {
         if (termino.isEmpty()) {
             return null;
         }
+        if (termino.contains("@")) {
+            var coincidencias = usuarios.findByEmailIgnoreCase(termino);
+            return coincidencias.size() == 1 ? coincidencias.get(0) : null;
+        }
         Optional<Usuario> porUsuario = usuarios.findByUsernameIgnoreCase(termino);
         if (porUsuario.isPresent()) {
             return porUsuario.get();
-        }
-        Optional<Usuario> porCorreo = usuarios.findFirstByEmailIgnoreCaseOrderByOrdenAsc(termino);
-        if (porCorreo.isPresent()) {
-            return porCorreo.get();
         }
         Optional<Estudiante> porDni = estudiantes.findByDni(termino);
         if (porDni.isPresent()) {
