@@ -49,11 +49,30 @@ class AccesoWebTests {
   String html=get(c,"/perfil").body();assertTrue(html.contains("Mis datos."));
   assertEquals(302,post(c,"/perfil","nombre=Contacto+Prueba&telefono=999888777&email=perfil%40example.com&_csrf="+csrf(html)).statusCode());
   assertEquals("Contacto Prueba",cuentas.findByUsuario("perfil.prueba").orElseThrow().getNombre());
+  var porCorreo=cliente();login(porCorreo,"PERFIL%40EXAMPLE.COM","Original2026!");
+  assertTrue(get(porCorreo,"/perfil").body().contains("perfil.prueba"));
+  var incorrecta=cliente();
+  var rechazo=post(incorrecta,"/login","username=perfil%40example.com&password=Incorrecta&_csrf="+csrf(get(incorrecta,"/login").body()));
+  assertTrue(rechazo.headers().firstValue("Location").orElse("").contains("error"));
   assertEquals(302,post(c,"/perfil/clave","actual=Incorrecta&nueva=NuevaSegura2026!&repetir=NuevaSegura2026!&_csrf="+csrf(get(c,"/perfil").body())).statusCode());
   assertTrue(encoder.matches("Original2026!",cuentas.findByUsuario("perfil.prueba").orElseThrow().getClaveHash()));
   var r=post(c,"/perfil/clave","actual=Original2026!&nueva=NuevaSegura2026!&repetir=NuevaSegura2026!&_csrf="+csrf(get(c,"/perfil").body()));
   assertEquals(302,r.statusCode());assertTrue(r.headers().firstValue("Location").orElse("").contains("claveActualizada"));
   assertEquals(302,get(c,"/perfil").statusCode());login(cliente(),"perfil.prueba","NuevaSegura2026!");
+ }
+ @Test void correoDuplicadoNoPuedeUsarseParaAcceder()throws Exception {
+  for(String usuario:new String[]{"duplicado.uno","duplicado.dos"}) {
+   var cuenta=new com.plustwenty.academic.model.Cuenta();cuenta.setUsuario(usuario);
+   cuenta.setEmail("duplicado@example.com");cuenta.setClaveHash(encoder.encode("Duplicado2026!"));
+   cuenta.setRol("ESTUDIANTE");cuentas.save(cuenta);
+  }
+  var c=cliente();
+  var respuesta=post(c,"/login","username=duplicado%40example.com&password=Duplicado2026!&_csrf="+csrf(get(c,"/login").body()));
+  assertTrue(respuesta.headers().firstValue("Location").orElse("").contains("error"));
+  login(c,"duplicado.uno","Duplicado2026!");
+  var html=get(c,"/perfil").body();
+  var duplicado=post(c,"/perfil","nombre=Prueba&telefono=999888777&email=duplicado%40example.com&_csrf="+csrf(html));
+  assertEquals(200,duplicado.statusCode());assertTrue(duplicado.body().contains("Este correo ya está asociado"));
  }
  @Test void solicitudPublicaSeConfirmaUnaSolaVezYGeneraCuotas()throws Exception {
   var publico=cliente();

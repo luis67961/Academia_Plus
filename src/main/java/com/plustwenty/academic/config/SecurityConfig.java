@@ -25,8 +25,16 @@ public class SecurityConfig {
     }
     @Bean UserDetailsService users(CuentaRepository cuentas) {
         return nombre-> {
-            var c=cuentas.findByUsuario(nombre.trim().toLowerCase(Locale.ROOT))
-                .orElseThrow(()->new UsernameNotFoundException("Credenciales incorrectas"));
+            var identificador=nombre.trim().toLowerCase(Locale.ROOT);
+            Cuenta c;
+            if(identificador.contains("@")) {
+                var coincidencias=cuentas.findByEmailIgnoreCase(identificador);
+                if(coincidencias.size()!=1) throw new UsernameNotFoundException("Credenciales incorrectas");
+                c=coincidencias.getFirst();
+            } else {
+                c=cuentas.findByUsuario(identificador)
+                    .orElseThrow(()->new UsernameNotFoundException("Credenciales incorrectas"));
+            }
             return User.withUsername(c.getUsuario()).password(c.getClaveHash()).roles(c.getRol()).build();
         };
     }

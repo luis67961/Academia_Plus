@@ -34,7 +34,12 @@ public class PerfilController {
         model.addAttribute("usuario",principal.getName());
         if(errors.hasErrors()) return "perfil";
         var c=cuentas.findByUsuario(principal.getName()).orElseThrow();
-        c.setNombre(datos.getNombre().trim());c.setTelefono(datos.getTelefono().trim());c.setEmail(datos.getEmail());
+        var email=datos.getEmail()==null ? "" : datos.getEmail().trim().toLowerCase(java.util.Locale.ROOT);
+        if(!email.isEmpty() && cuentas.existsByEmailIgnoreCaseAndIdNot(email,c.getId())) {
+            errors.rejectValue("email","duplicado","Este correo ya está asociado a otra cuenta.");
+            return "perfil";
+        }
+        c.setNombre(datos.getNombre().trim());c.setTelefono(datos.getTelefono().trim());c.setEmail(email.isEmpty()?null:email);
         r.addFlashAttribute("success","Tus datos de contacto se actualizaron.");return "redirect:/perfil";
     }
     @PostMapping("/perfil/clave") @Transactional
