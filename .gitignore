@@ -4,3 +4,6 @@ target/
 .vscode/
 .DS_Store
 node_modules/
+
+# Base local H2 (el SPA usa MySQL/Aiven)
+data/
