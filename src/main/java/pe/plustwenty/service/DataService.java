@@ -156,7 +156,8 @@ public class DataService {
             case "notificaciones":
                 return admin ? notificaciones.findAll(ORDEN) : notificaciones.findByUserId(me.id, ORDEN);
             case "auditoria":
-                return admin ? auditorias.findAll(ORDEN) : new ArrayList<Auditoria>();
+                // Solo los más recientes: la bitácora crece sin límite y no debe traerse entera.
+                return admin ? auditorias.findTop500ByOrderByOrdenDesc() : new ArrayList<Auditoria>();
             default:
                 throw new ApiException(404, "Colección desconocida: " + col);
         }

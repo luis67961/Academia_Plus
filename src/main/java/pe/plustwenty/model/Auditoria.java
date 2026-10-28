@@ -4,10 +4,11 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 
 @Entity
-@Table(name = "auditoria")
+@Table(name = "auditoria", indexes = @Index(name = "ix_auditoria_orden", columnList = "orden"))
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class Auditoria extends Ordenable {
 
