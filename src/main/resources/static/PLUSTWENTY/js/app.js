@@ -587,8 +587,9 @@
       });
       document.addEventListener('keydown', e => { if (e.key === 'Escape') { UI.closeModal(); this.closeSidebar(); } });
       window.addEventListener('hashchange', () => {
-        // Los datos viven en el servidor: se recargan al cambiar de sección para ver lo último guardado.
-        hydrate();
+        // Antes se hacía hydrate() (bootstrap completo) en CADA cambio de pestaña: lento y pesado.
+        // Ahora solo re-renderizamos desde la caché, que ya se mantiene al día con las escrituras
+        // del propio usuario. Para ver cambios hechos por otros, recargar la página.
         if (!ME) { location.replace('index.html'); return; }
         this.render();
       });

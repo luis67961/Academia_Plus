@@ -4,11 +4,15 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 
 @Entity
-@Table(name = "pago")
+@Table(name = "pago", indexes = {
+        @Index(name = "ix_pago_estudiante", columnList = "estudiante_id"),
+        @Index(name = "ix_pago_pension", columnList = "pension_id")
+})
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class Pago extends Ordenable {
 

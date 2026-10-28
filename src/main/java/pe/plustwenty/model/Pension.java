@@ -4,12 +4,16 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 
 /** Obligación de pago: matrícula, pensión o cobro individual. */
 @Entity
-@Table(name = "pension")
+@Table(name = "pension", indexes = {
+        @Index(name = "ix_pension_estudiante", columnList = "estudiante_id"),
+        @Index(name = "ix_pension_matricula", columnList = "matricula_id")
+})
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class Pension extends Ordenable {
 
