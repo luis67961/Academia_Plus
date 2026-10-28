@@ -86,6 +86,23 @@
   // Todas las llamadas son síncronas (XHR bloqueante) para conservar tal cual la
   // lógica de las vistas, que lee y escribe datos de forma inmediata.
   const http = {
+    async callAsync(method, url, body) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 20000);
+      try {
+        const response = await fetch(url, {
+          method, credentials: 'same-origin', signal: controller.signal,
+          headers: { Accept: 'application/json', ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}) },
+          body: body === undefined ? undefined : JSON.stringify(body)
+        });
+        const data = await response.json().catch(() => null);
+        return { status: response.status, ok: response.ok, data };
+      } catch (e) {
+        throw new ApiError(e.name === 'AbortError'
+          ? 'El servidor está tardando demasiado. Espera un momento e intenta nuevamente.'
+          : 'No se pudo conectar con el servidor. Revisa tu conexión e intenta nuevamente.', 0);
+      } finally { clearTimeout(timer); }
+    },
     call(method, url, body) {
       const x = new XMLHttpRequest();
       x.open(method, url, false);
@@ -264,9 +281,9 @@
      Autenticación (sesión del servidor) y control de roles
      ------------------------------------------------------------------ */
   const auth = {
-    login(username, password, rolEsperado) {
+    async login(username, password, rolEsperado) {
       let r;
-      try { r = http.call('POST', '/api/auth/login', { username, password, rol: rolEsperado || null }); }
+      try { r = await http.callAsync('POST', '/api/auth/login', { username, password, rol: rolEsperado || null }); }
       catch (e) { return { ok: false, error: e.message }; }
       if (r.ok && r.data && r.data.ok) { ME = r.data.user; return { ok: true, user: r.data.user }; }
       return { ok: false, error: (r.data && (r.data.error || r.data.message)) || 'No se pudo iniciar sesión.' };
@@ -621,7 +638,8 @@
   window.addEventListener('error', e => { if (mostrarErrorApi(e.error)) e.preventDefault(); });
   window.addEventListener('unhandledrejection', e => { if (mostrarErrorApi(e.reason)) e.preventDefault(); });
 
-  hydrate();
+  // La pantalla de acceso no necesita descargar las colecciones antes de entrar.
+  if (!document.getElementById('login-form')) hydrate();
 
   global.PT = {
     ACADEMIA, MESES, LOGO_SVG,

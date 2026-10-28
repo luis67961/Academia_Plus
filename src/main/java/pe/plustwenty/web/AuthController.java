@@ -6,7 +6,6 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Optional;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -44,10 +43,13 @@ public class AuthController {
     @PostMapping("/login")
     public ResponseEntity<Map<String, Object>> login(@RequestBody LoginRequest req, HttpServletRequest request) {
         String termino = req.username() == null ? "" : req.username().trim().toLowerCase(java.util.Locale.ROOT);
+        if (termino.length() > 254 || !termino.matches("[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,}")) {
+            return fallo(HttpStatus.BAD_REQUEST, "Ingresa el correo electrónico de tu cuenta.");
+        }
         Usuario u = buscar(termino);
         if (u == null || req.password() == null || u.password == null
                 || !encoder.matches(req.password(), u.password)) {
-            return fallo(HttpStatus.UNAUTHORIZED, "Correo/usuario o contraseña incorrectos.");
+            return fallo(HttpStatus.UNAUTHORIZED, "Correo o contraseña incorrectos.");
         }
         if (!Boolean.TRUE.equals(u.activo)) {
             return fallo(HttpStatus.FORBIDDEN, "La cuenta está desactivada. Comuníquese con la administración.");
@@ -108,24 +110,10 @@ public class AuthController {
         return ResponseEntity.ok(cuerpo);
     }
 
-    /** Acepta usuario, correo o DNI del estudiante vinculado (igual que el login original). */
+    /** El acceso solo admite el correo de una única cuenta. */
     private Usuario buscar(String termino) {
-        if (termino.isEmpty()) {
-            return null;
-        }
-        if (termino.contains("@")) {
-            var coincidencias = usuarios.findByEmailIgnoreCase(termino);
-            return coincidencias.size() == 1 ? coincidencias.get(0) : null;
-        }
-        Optional<Usuario> porUsuario = usuarios.findByUsernameIgnoreCase(termino);
-        if (porUsuario.isPresent()) {
-            return porUsuario.get();
-        }
-        Optional<Estudiante> porDni = estudiantes.findByDni(termino);
-        if (porDni.isPresent()) {
-            return usuarios.findFirstByEstudianteIdOrderByOrdenAsc(porDni.get().id).orElse(null);
-        }
-        return null;
+        var coincidencias = usuarios.findByEmailIgnoreCase(termino);
+        return coincidencias.size() == 1 ? coincidencias.get(0) : null;
     }
 
     private ResponseEntity<Map<String, Object>> fallo(HttpStatus status, String mensaje) {

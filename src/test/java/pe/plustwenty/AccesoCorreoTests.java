@@ -38,15 +38,19 @@ class AccesoCorreoTests {
         assertEquals(403,auth.login(new AuthController.LoginRequest(u.email,"ClaveSegura2026!","admin"),new MockHttpServletRequest()).getStatusCode().value());
     }
 
-    @Test void correoDuplicadoNoAbreSesionYUsuarioSigueFuncionando() {
+    @Test void correoDuplicadoUsuarioYDniNoAbrenSesion() {
         var u=cuenta("uno");
         when(usuarios.findByEmailIgnoreCase(u.email)).thenReturn(List.of(u,cuenta("dos")));
-        when(usuarios.findByUsernameIgnoreCase(u.username)).thenReturn(Optional.of(u));
         var auth=new AuthController(usuarios,estudiantes,encoder);
         var request=new MockHttpServletRequest();
         assertEquals(401,auth.login(new AuthController.LoginRequest(u.email,"ClaveSegura2026!",null),request).getStatusCode().value());
         assertNull(request.getSession(false));
-        assertEquals(200,auth.login(new AuthController.LoginRequest(u.username,"ClaveSegura2026!",null),request).getStatusCode().value());
+        for (String identificador : List.of(u.username,"12345678","correo@invalido")) {
+            assertEquals(400,auth.login(new AuthController.LoginRequest(identificador,"ClaveSegura2026!",null),request).getStatusCode().value());
+            assertNull(request.getSession(false));
+        }
+        verify(usuarios,never()).findByUsernameIgnoreCase(any());
+        verify(estudiantes,never()).findByDni(any());
     }
 
     private DataService datos() {

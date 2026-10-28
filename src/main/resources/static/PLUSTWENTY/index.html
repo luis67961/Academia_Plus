@@ -79,9 +79,9 @@
 
           <form id="login-form" class="mt-6 space-y-4" novalidate>
             <label class="field">
-              <span class="label">Correo electrónico o usuario</span>
+              <span class="label">Correo electrónico</span>
               <div class="input-icon"><i class="fa-solid fa-envelope"></i>
-                <input id="login-user" name="username" class="input" autocomplete="username" placeholder="correo@ejemplo.com, usuario o DNI" required>
+                <input id="login-user" name="username" type="email" class="input" autocomplete="username" placeholder="correo@ejemplo.com" maxlength="254" required>
               </div>
             </label>
             <label class="field">
@@ -131,22 +131,22 @@
         e.currentTarget.innerHTML = `<i class="fa-solid fa-eye${show ? '-slash' : ''}"></i>`;
       });
 
-      function doLogin(username, password) {
+      async function doLogin(username, password) {
+        if (btn.disabled) return;
         errBox.classList.add('hidden');
-        if (!username || !password) return showError('Ingrese su correo o usuario y contraseña.');
+        if (!PT.validators.email(username)) return showError('Ingresa el correo electrónico de tu cuenta.');
+        if (!password) return showError('Ingresa tu contraseña.');
         btn.disabled = true;
         btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i><span>Validando credenciales…</span>';
-        setTimeout(() => {
-          const r = auth.login(username, password);
-          if (!r.ok) {
-            btn.disabled = false;
-            btn.innerHTML = '<span>Ingresar al sistema</span><i class="fa-solid fa-arrow-right"></i>';
-            return showError(r.error);
-          }
-          const rolTexto = r.user.rol === 'admin' ? 'Administrador' : 'Estudiante';
-          UI.toast(`¡Bienvenido, ${r.user.nombre.split(' ')[0]}! (${rolTexto})`);
-          setTimeout(() => location.href = auth.home(r.user), 450);
-        }, 500);
+        const r = await auth.login(username, password);
+        if (!r.ok) {
+          btn.disabled = false;
+          btn.innerHTML = '<span>Ingresar al sistema</span><i class="fa-solid fa-arrow-right"></i>';
+          return showError(r.error);
+        }
+        const rolTexto = r.user.rol === 'admin' ? 'Administrador' : 'Estudiante';
+        UI.toast(`¡Bienvenido, ${r.user.nombre.split(' ')[0]}! (${rolTexto})`);
+        setTimeout(() => location.href = auth.home(r.user), 450);
       }
 
       form.addEventListener('submit', e => {
