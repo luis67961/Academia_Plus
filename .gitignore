@@ -3,3 +3,10 @@ target/
 *.iml
 .vscode/
 .DS_Store
+node_modules/
+
+# Base local H2 (el SPA usa MySQL/Aiven)
+data/
+
+# Credenciales locales de BD. Nunca subir. Ver config/db.properties.example
+config/db.properties

@@ -125,6 +125,7 @@
   const COLECCIONES = ['programas', 'ciclos', 'estudiantes', 'users', 'matriculas', 'pensiones', 'pagos', 'notificaciones', 'auditoria'];
   const cache = {};
   let ME = null; // usuario autenticado (sesión del servidor)
+  let UNREAD = 0; // nº de notificaciones no leídas (COUNT del servidor; no se bajan todas)
 
   /** Carga desde el servidor los datos que el usuario actual tiene permitido ver. */
   function hydrate() {
@@ -132,6 +133,7 @@
     try { r = http.call('GET', '/api/bootstrap'); } catch (e) { r = { ok: false, data: null }; }
     const d = r.ok && r.data ? r.data : { me: null, data: {} };
     ME = d.me || null;
+    UNREAD = d.unreadCount || 0;
     COLECCIONES.forEach(c => { cache[c] = (d.data && d.data[c]) || []; });
     return r.ok;
   }
@@ -163,6 +165,28 @@
     },
     reload: hydrate,
     clearCache: hydrate
+  };
+
+  /* Notificaciones: el badge usa un COUNT y la lista se pide paginada (nunca se bajan todas). */
+  const notificaciones = {
+    count() {
+      const r = http.call('GET', '/api/notificaciones/unread-count');
+      if (r.ok && r.data) UNREAD = r.data.count || 0;
+      return UNREAD;
+    },
+    cachedCount() { return UNREAD; },
+    list(page = 0, size = 20) {
+      const r = http.call('GET', `/api/notificaciones?page=${page}&size=${size}`);
+      return r.ok && Array.isArray(r.data) ? r.data : [];
+    },
+    marcarLeida(id) {
+      http.must('PATCH', `/api/data/notificaciones/${encodeURIComponent(id)}`, { leida: true }, 'No se pudo marcar la notificación.');
+      return this.count();
+    },
+    marcarTodas() {
+      http.must('POST', '/api/notificaciones/mark-all-read', {}, 'No se pudieron marcar las notificaciones.');
+      return this.count();
+    }
   };
 
   const nextCounter = name =>
@@ -563,8 +587,9 @@
       });
       document.addEventListener('keydown', e => { if (e.key === 'Escape') { UI.closeModal(); this.closeSidebar(); } });
       window.addEventListener('hashchange', () => {
-        // Los datos viven en el servidor: se recargan al cambiar de sección para ver lo último guardado.
-        hydrate();
+        // Antes se hacía hydrate() (bootstrap completo) en CADA cambio de pestaña: lento y pesado.
+        // Ahora solo re-renderizamos desde la caché, que ya se mantiene al día con las escrituras
+        // del propio usuario. Para ver cambios hechos por otros, recargar la página.
         if (!ME) { location.replace('index.html'); return; }
         this.render();
       });
@@ -643,7 +668,7 @@
 
   global.PT = {
     ACADEMIA, MESES, LOGO_SVG,
-    db, finance, auth, audit, notify, notifyEstudiante, nextCounter,
+    db, finance, auth, audit, notify, notifyEstudiante, nextCounter, notificaciones,
     UI, Shell, docs, validators, resetDemo, fakeVoucher,
     fmt: { money, date: fmtDate, dateTime: fmtDateTime, timeAgo, esc, initials, today, nowISO, addDays, daysBetween, round2, sum, parseDate, toISO, pad, norm, debounce, uid, randomPassword, MESES }
   };

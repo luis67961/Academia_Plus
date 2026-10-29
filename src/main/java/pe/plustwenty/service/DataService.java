@@ -106,11 +106,17 @@ public class DataService {
         Map<String, Object> data = new LinkedHashMap<>();
         if (me != null) {
             for (String col : COLECCIONES) {
+                // Las notificaciones NO se cargan en bloque: con muchas filas tumban la app.
+                // El badge usa un COUNT y la lista se pide paginada (NotificacionController).
+                if ("notificaciones".equals(col)) {
+                    continue;
+                }
                 data.put(col, leer(col, me));
             }
         }
         out.put("me", me);
         out.put("data", data);
+        out.put("unreadCount", me == null ? 0L : notificaciones.countByUserIdAndLeidaFalse(me.id));
         return out;
     }
 
@@ -150,7 +156,8 @@ public class DataService {
             case "notificaciones":
                 return admin ? notificaciones.findAll(ORDEN) : notificaciones.findByUserId(me.id, ORDEN);
             case "auditoria":
-                return admin ? auditorias.findAll(ORDEN) : new ArrayList<Auditoria>();
+                // Solo los más recientes: la bitácora crece sin límite y no debe traerse entera.
+                return admin ? auditorias.findTop500ByOrderByOrdenDesc() : new ArrayList<Auditoria>();
             default:
                 throw new ApiException(404, "Colección desconocida: " + col);
         }

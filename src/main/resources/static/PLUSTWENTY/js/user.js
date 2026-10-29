@@ -13,7 +13,7 @@
 (function () {
   'use strict';
 
-  const { db, finance, auth, UI, Shell, docs, fmt, validators } = window.PT;
+  const { db, finance, auth, UI, Shell, docs, fmt, validators, notificaciones } = window.PT;
   const user = auth.require('user');
   if (!user) return;
 
@@ -26,7 +26,7 @@
 
   /* Contador de notificaciones no leídas */
   function updateNotifBadges() {
-    const unread = db.where('notificaciones', n => n.userId === user.id && !n.leida).length;
+    const unread = notificaciones.count();
     const txt = unread > 0 ? String(unread) : '';
     const elNav = document.getElementById('nav-badge-notif');
     const elTop = document.getElementById('top-badge-notif');
@@ -44,7 +44,7 @@
       const res = finance.resumen(estudiante.id);
       const prg = db.find('programas', estudiante.programaId);
       const cic = db.find('ciclos', estudiante.cicloId);
-      const ultimasNotifs = db.where('notificaciones', n => n.userId === user.id).slice().reverse().slice(0, 3);
+      const ultimasNotifs = notificaciones.list(0, 3);
 
       return `
         <div class="stagger space-y-6">
@@ -872,8 +872,8 @@
     title: 'Centro de Notificaciones',
     subtitle: 'Avisos de pagos, confirmaciones de recibos y comunicados académicos',
     render() {
-      const notifs = db.where('notificaciones', n => n.userId === user.id).slice().reverse();
-      const unreadCount = notifs.filter(n => !n.leida).length;
+      const notifs = notificaciones.list(0, 100);
+      const unreadCount = notificaciones.count();
 
       return `
         <div class="card space-y-4">
@@ -918,9 +918,7 @@
     },
     mount(params, root) {
       document.getElementById('btn-leer-todas')?.addEventListener('click', () => {
-        db.where('notificaciones', n => n.userId === user.id && !n.leida).forEach(n => {
-          db.update('notificaciones', n.id, { leida: true });
-        });
+        notificaciones.marcarTodas();
         updateNotifBadges();
         UI.toast('Todas las notificaciones marcadas como leídas');
         Shell.refresh();
@@ -929,7 +927,7 @@
       root.addEventListener('click', e => {
         const btnM = e.target.closest('[data-mark-read]');
         if (btnM) {
-          db.update('notificaciones', btnM.dataset.markRead, { leida: true });
+          notificaciones.marcarLeida(btnM.dataset.markRead);
           updateNotifBadges();
           Shell.refresh();
         }
