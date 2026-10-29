@@ -2,22 +2,13 @@ package pe.plustwenty.service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
-import java.util.List;
-import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import pe.plustwenty.model.Auditoria;
-import pe.plustwenty.model.Notificacion;
 import pe.plustwenty.model.Pago;
 import pe.plustwenty.model.Pension;
 import pe.plustwenty.model.Usuario;
-import pe.plustwenty.repository.AuditoriaRepository;
-import pe.plustwenty.repository.NotificacionRepository;
 import pe.plustwenty.repository.PagoRepository;
 import pe.plustwenty.repository.PensionRepository;
-import pe.plustwenty.repository.UsuarioRepository;
 
 /**
  * Revisión de pagos (aprobar/rechazar) en UNA sola operación transaccional:
@@ -29,20 +20,15 @@ public class PagoRevisionService {
 
     private final PagoRepository pagos;
     private final PensionRepository pensiones;
-    private final UsuarioRepository usuarios;
-    private final NotificacionRepository notificaciones;
-    private final AuditoriaRepository auditorias;
     private final CounterService counters;
+    private final EventoService eventos;
 
-    public PagoRevisionService(PagoRepository pagos, PensionRepository pensiones, UsuarioRepository usuarios,
-                               NotificacionRepository notificaciones, AuditoriaRepository auditorias,
-                               CounterService counters) {
+    public PagoRevisionService(PagoRepository pagos, PensionRepository pensiones,
+                               CounterService counters, EventoService eventos) {
         this.pagos = pagos;
         this.pensiones = pensiones;
-        this.usuarios = usuarios;
-        this.notificaciones = notificaciones;
-        this.auditorias = auditorias;
         this.counters = counters;
+        this.eventos = eventos;
     }
 
     @Transactional
@@ -51,15 +37,15 @@ public class PagoRevisionService {
         String recibo = "R-" + String.format("%06d", counters.next("recibo"));
         p.estado = "Aprobado";
         p.revisadoPor = admin.nombre;
-        p.fechaRevision = ahora();
+        p.fechaRevision = eventos.ahora();
         p.reciboNumero = recibo;
         pagos.save(p);
 
-        notificar(p.estudianteId, "¡Pago Aprobado!",
+        eventos.notificarEstudiante(p.estudianteId, "¡Pago Aprobado!",
                 "Tu abono de " + money(p.monto) + " por \"" + conceptoDe(p)
                         + "\" ha sido verificado con éxito. Recibo interno " + recibo + ".",
                 "success", "historial");
-        auditar(admin, "Aprobó pago " + recibo + " de " + money(p.monto),
+        eventos.auditar(admin, "Aprobó pago " + recibo + " de " + money(p.monto),
                 "Verificación de Pagos", "Op: " + texto(p.numeroOperacion));
         return p;
     }
@@ -70,14 +56,14 @@ public class PagoRevisionService {
         p.estado = "Rechazado";
         p.motivoRechazo = motivo;
         p.revisadoPor = admin.nombre;
-        p.fechaRevision = ahora();
+        p.fechaRevision = eventos.ahora();
         pagos.save(p);
 
-        notificar(p.estudianteId, "Pago Observado / Rechazado",
+        eventos.notificarEstudiante(p.estudianteId, "Pago Observado / Rechazado",
                 "Tu reporte de pago de " + money(p.monto) + " fue rechazado por administración: \""
                         + motivo + "\". Por favor, revisa el voucher y vuelve a reportarlo.",
                 "danger", "reportar");
-        auditar(admin, "Rechazó pago Op. " + texto(p.numeroOperacion),
+        eventos.auditar(admin, "Rechazó pago Op. " + texto(p.numeroOperacion),
                 "Verificación de Pagos", "Motivo: " + motivo);
         return p;
     }
@@ -96,51 +82,6 @@ public class PagoRevisionService {
         }
         Pension pen = pensiones.findById(p.pensionId).orElse(null);
         return pen != null && pen.concepto != null ? pen.concepto : "Pensión";
-    }
-
-    /** Crea la notificación para todas las cuentas de estudiante/apoderado vinculadas al expediente. */
-    private void notificar(String estudianteId, String titulo, String mensaje, String tipo, String link) {
-        if (estudianteId == null) {
-            return;
-        }
-        for (Usuario u : usuarios.findByEstudianteId(estudianteId)) {
-            if (!"user".equals(u.rol)) {
-                continue;
-            }
-            Notificacion n = new Notificacion();
-            n.id = nuevoId("ntf");
-            n.orden = counters.next("orden");
-            n.userId = u.id;
-            n.titulo = titulo;
-            n.mensaje = mensaje;
-            n.tipo = tipo;
-            n.fecha = ahora();
-            n.leida = false;
-            n.link = link;
-            n.ref = "";
-            notificaciones.save(n);
-        }
-    }
-
-    private void auditar(Usuario admin, String accion, String modulo, String motivo) {
-        Auditoria a = new Auditoria();
-        a.id = nuevoId("aud");
-        a.orden = counters.next("orden");
-        a.fecha = ahora();
-        a.adminId = admin.id;
-        a.admin = admin.nombre;
-        a.accion = accion;
-        a.modulo = modulo;
-        a.motivo = motivo;
-        auditorias.save(a);
-    }
-
-    private String nuevoId(String prefijo) {
-        return prefijo + "_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
-    }
-
-    private String ahora() {
-        return Instant.now().truncatedTo(ChronoUnit.MILLIS).toString();
     }
 
     private String money(BigDecimal m) {

@@ -206,6 +206,15 @@
     }
   };
 
+  /* Registro de matrícula: una sola llamada; luego refresca la caché (cambiaron varias colecciones). */
+  const registroMatriculas = {
+    registrar(datos) {
+      const saved = http.must('POST', '/api/matriculas/registrar', datos, 'No se pudo registrar la matrícula.');
+      hydrate();
+      return saved;
+    }
+  };
+
   const nextCounter = name =>
     http.must('POST', `/api/counters/${encodeURIComponent(name)}/next`, undefined, 'No se pudo generar el correlativo.').value;
 
@@ -685,7 +694,7 @@
 
   global.PT = {
     ACADEMIA, MESES, LOGO_SVG,
-    db, finance, auth, audit, notify, notifyEstudiante, nextCounter, notificaciones, revisionPagos,
+    db, finance, auth, audit, notify, notifyEstudiante, nextCounter, notificaciones, revisionPagos, registroMatriculas,
     UI, Shell, docs, validators, resetDemo, fakeVoucher,
     fmt: { money, date: fmtDate, dateTime: fmtDateTime, timeAgo, esc, initials, today, nowISO, addDays, daysBetween, round2, sum, parseDate, toISO, pad, norm, debounce, uid, randomPassword, MESES }
   };

@@ -547,40 +547,17 @@
         const est = db.find('estudiantes', estId);
         if (!ciclo || !est) return;
 
-        const numMat = PT.nextCounter('matricula');
-        const codigo = `MAT-${ciclo.fechaInicio.slice(0, 4)}-${fmt.pad(numMat, 4)}`;
-
-        const nuevaMat = db.insert('matriculas', {
-          codigo,
+        // Una sola llamada: el servidor crea la matrícula + cronograma, actualiza al estudiante,
+        // notifica y audita en una transacción (antes eran ~6 llamadas en fila).
+        const saved = window.PT.registroMatriculas.registrar({
           estudianteId: estId,
-          programaId,
           cicloId,
+          programaId,
           fecha,
-          montoMatricula: monto,
-          estado: 'Activa',
-          observacion: 'Matrícula regular',
-          fechaCreacion: fmt.nowISO(),
-          creadoPor: admin.nombre
-        }, 'mat');
-
-        // Generar obligaciones automáticamente
-        const obligaciones = finance.generarObligaciones(nuevaMat, ciclo);
-        db.insertMany('pensiones', obligaciones);
-
-        // Actualizar programa y ciclo actual en el estudiante
-        db.update('estudiantes', estId, { programaId, cicloId });
-
-        // Notificar al estudiante
-        notifyEstudiante(estId, {
-          titulo: '¡Matrícula Registrada!',
-          mensaje: `Tu matrícula al ciclo ${ciclo.nombre} ha sido registrada con código ${codigo}. Se generó tu cronograma de pensiones.`,
-          tipo: 'success',
-          link: 'matriculas'
+          montoMatricula: monto
         });
-
-        audit(`Registró matrícula ${codigo} para estudiante DNI ${est.dni}`, 'Gestión de Matrículas', `Programa: ${ciclo.nombre}`);
         UI.closeModal();
-        UI.toast(`Matrícula ${codigo} creada exitosamente con sus pensiones`);
+        UI.toast(`Matrícula ${saved.codigo} creada exitosamente con sus pensiones`);
         Shell.refresh();
       });
     }
