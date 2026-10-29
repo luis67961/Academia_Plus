@@ -218,6 +218,15 @@
     }
   };
 
+  /* Registro de estudiante: una sola llamada (crea ficha + cuenta); luego refresca la caché. */
+  const registroEstudiantes = {
+    registrar(datos) {
+      const saved = http.must('POST', '/api/estudiantes/registrar', datos, 'No se pudo registrar el estudiante.');
+      hydrate();
+      return saved;
+    }
+  };
+
   const nextCounter = name =>
     http.must('POST', `/api/counters/${encodeURIComponent(name)}/next`, undefined, 'No se pudo generar el correlativo.').value;
 
@@ -697,7 +706,7 @@
 
   global.PT = {
     ACADEMIA, MESES, LOGO_SVG,
-    db, finance, auth, audit, notify, notifyEstudiante, nextCounter, notificaciones, revisionPagos, registroMatriculas,
+    db, finance, auth, audit, notify, notifyEstudiante, nextCounter, notificaciones, revisionPagos, registroMatriculas, registroEstudiantes,
     UI, Shell, docs, validators, resetDemo, fakeVoucher,
     fmt: { money, date: fmtDate, dateTime: fmtDateTime, timeAgo, esc, initials, today, nowISO, addDays, daysBetween, round2, sum, parseDate, toISO, pad, norm, debounce, uid, randomPassword, MESES }
   };

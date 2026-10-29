@@ -913,31 +913,8 @@
           audit(`Actualizó datos de estudiante DNI ${est.dni}`, 'Gestión de Estudiantes');
           UI.toast('Estudiante actualizado exitosamente');
         } else {
-          const num = PT.nextCounter('estudiante');
-          const nuevo = db.insert('estudiantes', {
-            ...data,
-            dni,
-            codigo: `PT-2026-${fmt.pad(num, 3)}`,
-            programaId: null,
-            cicloId: null,
-            activo: true,
-            fechaRegistro: fmt.nowISO()
-          }, 'est');
-
-          // Crear automáticamente cuenta de acceso para el estudiante (usuario = dni, pass = dni)
-          db.insert('users', {
-            username: dni,
-            password: dni,
-            rol: 'user',
-            tipo: 'Estudiante',
-            nombre: `${nuevo.nombres} ${nuevo.apellidos}`,
-            email: nuevo.email,
-            estudianteId: nuevo.id,
-            activo: true,
-            fechaCreacion: fmt.nowISO()
-          }, 'usr');
-
-          audit(`Registró nuevo estudiante DNI ${dni} (${nuevo.nombres} ${nuevo.apellidos})`, 'Gestión de Estudiantes');
+          // Una sola llamada: el servidor crea el estudiante + su cuenta de acceso (usuario = DNI) y audita.
+          window.PT.registroEstudiantes.registrar({ ...data, dni });
           UI.toast(`Estudiante registrado. Usuario de portal creado: ${dni}`);
         }
 
