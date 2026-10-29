@@ -11,6 +11,7 @@ import pe.plustwenty.model.Pago;
 import pe.plustwenty.model.Usuario;
 import pe.plustwenty.service.ApiException;
 import pe.plustwenty.service.PagoRevisionService;
+import pe.plustwenty.service.PagoRevisionService.PagoCaja;
 
 /** Revisión de pagos en UNA sola llamada: aprobar o rechazar (transaccional). */
 @RestController
@@ -40,6 +41,11 @@ public class PagoController {
             throw new ApiException(400, "Indique un motivo de rechazo (mínimo 5 caracteres).");
         }
         return revision.rechazar(id, motivo, me);
+    }
+
+    @PostMapping("/registrar-caja")
+    public Pago registrarEnCaja(@RequestBody PagoCaja body, HttpServletRequest request) {
+        return revision.registrarEnCaja(body, admin(request));
     }
 
     private Usuario admin(HttpServletRequest request) {

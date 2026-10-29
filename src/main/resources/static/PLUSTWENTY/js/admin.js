@@ -1605,38 +1605,16 @@
         const pen = db.find('pensiones', pensionId);
         if (!est || !pen) return;
 
-        const numOp = `CAJA-${fmt.pad(PT.nextCounter('operacion_caja'), 5)}`;
-        const numRecibo = finance.nuevoRecibo();
-
-        const nuevoPago = db.insert('pagos', {
-          pensionId,
+        // Una sola llamada: el servidor registra el pago aprobado, emite recibo, notifica y audita.
+        const saved = window.PT.revisionPagos.registrarCaja({
           estudianteId: estId,
+          pensionId,
           monto,
-          metodo: 'Efectivo',
-          numeroOperacion: numOp,
-          fechaPago,
-          comprobante: null,
-          estado: 'Aprobado',
-          motivoRechazo: '',
-          observacion: 'Cobro en ventanilla de caja',
-          fechaReporte: fmt.nowISO(),
-          registradoPor: 'admin',
-          revisadoPor: admin.nombre,
-          fechaRevision: fmt.nowISO(),
-          reciboNumero: numRecibo
-        }, 'pag');
-
-        notifyEstudiante(estId, {
-          titulo: 'Pago en Efectivo Registrado',
-          mensaje: `Se registró tu pago en caja de ${fmt.money(monto)} por "${pen.concepto}". Recibo interno ${numRecibo}.`,
-          tipo: 'success',
-          link: 'historial'
+          fechaPago
         });
-
-        audit(`Cobró en caja S/ ${monto} en efectivo (Recibo ${numRecibo})`, 'Verificación de Pagos', `Estudiante DNI ${est.dni} · ${pen.concepto}`);
         UI.closeModal();
-        UI.toast(`Pago registrado con Recibo ${numRecibo}`);
-        docs.printRecibo(nuevoPago.id);
+        UI.toast(`Pago registrado con Recibo ${saved.reciboNumero}`);
+        docs.printRecibo(saved.id);
         Shell.refresh();
       });
     }

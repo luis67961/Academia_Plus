@@ -203,6 +203,9 @@
     },
     rechazar(id, motivo) {
       return guardarPagoEnCache(http.must('POST', `/api/pagos/${encodeURIComponent(id)}/rechazar`, { motivo }, 'No se pudo rechazar el pago.'));
+    },
+    registrarCaja(datos) {
+      return guardarPagoEnCache(http.must('POST', '/api/pagos/registrar-caja', datos, 'No se pudo registrar el pago en caja.'));
     }
   };
 

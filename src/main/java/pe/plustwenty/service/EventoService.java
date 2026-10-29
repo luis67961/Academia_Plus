@@ -73,7 +73,8 @@ public class EventoService {
         return Instant.now().truncatedTo(ChronoUnit.MILLIS).toString();
     }
 
-    private String nuevoId(String prefijo) {
+    /** Genera un id corto y único con prefijo (p. ej. "ntf_...", "pag_..."). */
+    public String nuevoId(String prefijo) {
         return prefijo + "_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
     }
 }
