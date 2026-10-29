@@ -586,12 +586,7 @@
     }
   };
 
-  const LOGO_SVG = (size = 40, uidSuffix = 'a') => `<svg width="${size}" height="${size}" viewBox="0 0 48 48" aria-hidden="true">
-    <defs><linearGradient id="ptg-${uidSuffix}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#60A5FA"/><stop offset=".55" stop-color="#2563EB"/><stop offset="1" stop-color="#1E3A8A"/></linearGradient></defs>
-    <rect width="48" height="48" rx="14" fill="url(#ptg-${uidSuffix})"/>
-    <path d="M10 24h10M15 19v10" stroke="#fff" stroke-width="3.4" stroke-linecap="round"/>
-    <text x="32.5" y="29.6" font-family="Plus Jakarta Sans, Arial" font-weight="800" font-size="14" fill="#fff" text-anchor="middle">20</text>
-    <circle cx="40" cy="10" r="3" fill="#10B981"/></svg>`;
+  const LOGO_SVG = (size = 40) => `<img src="images/logo.png" alt="Plus Twenty · Academia Preuniversitaria" style="height:${size}px;width:auto;display:block;border-radius:${Math.max(4, Math.round(size * 0.08))}px" />`;
 
   /* ------------------------------------------------------------------
      Shell SPA (sidebar + router por hash)
