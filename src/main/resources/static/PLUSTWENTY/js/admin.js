@@ -270,24 +270,9 @@
       });
       if (!ok) return;
 
-      const numRecibo = finance.nuevoRecibo();
-      db.update('pagos', pagoId, {
-        estado: 'Aprobado',
-        revisadoPor: admin.nombre,
-        fechaRevision: fmt.nowISO(),
-        reciboNumero: numRecibo
-      });
-
-      // Notificar al estudiante
-      notifyEstudiante(pg.estudianteId, {
-        titulo: '¡Pago Aprobado!',
-        mensaje: `Tu abono de ${fmt.money(pg.monto)} por "${pen?.concepto || 'Pensión'}" ha sido verificado con éxito. Recibo interno ${numRecibo}.`,
-        tipo: 'success',
-        link: 'historial'
-      });
-
-      audit(`Aprobó pago ${numRecibo} de ${fmt.money(pg.monto)}`, 'Verificación de Pagos', `Estudiante DNI ${est?.dni || '—'} · Op: ${pg.numeroOperacion}`);
-      UI.toast(`Pago aprobado. Recibo generado: ${numRecibo}`, 'success');
+      // Una sola llamada: el servidor aprueba, emite recibo, notifica y audita en una transacción.
+      const saved = window.PT.revisionPagos.aprobar(pagoId);
+      UI.toast(`Pago aprobado. Recibo generado: ${saved.reciboNumero}`, 'success');
       updatePendingBadge();
     },
 
@@ -305,21 +290,8 @@
       });
       if (!r || !r.motivo) return;
 
-      db.update('pagos', pagoId, {
-        estado: 'Rechazado',
-        motivoRechazo: r.motivo,
-        revisadoPor: admin.nombre,
-        fechaRevision: fmt.nowISO()
-      });
-
-      notifyEstudiante(pg.estudianteId, {
-        titulo: 'Pago Observado / Rechazado',
-        mensaje: `Tu reporte de pago de ${fmt.money(pg.monto)} fue rechazado por administración: "${r.motivo}". Por favor, revisa el voucher y vuelve a reportarlo.`,
-        tipo: 'danger',
-        link: 'reportar'
-      });
-
-      audit(`Rechazó pago Op. ${pg.numeroOperacion}`, 'Verificación de Pagos', `Motivo: ${r.motivo}`);
+      // Una sola llamada: el servidor rechaza, notifica y audita en una transacción.
+      window.PT.revisionPagos.rechazar(pagoId, r.motivo);
       UI.toast('Pago rechazado y notificado al estudiante', 'info');
       updatePendingBadge();
     }
