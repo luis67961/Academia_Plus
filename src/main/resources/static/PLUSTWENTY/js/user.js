@@ -26,7 +26,7 @@
 
   /* Contador de notificaciones no leídas */
   function updateNotifBadges() {
-    const unread = notificaciones.count();
+    const unread = notificaciones.cachedCount();
     const txt = unread > 0 ? String(unread) : '';
     const elNav = document.getElementById('nav-badge-notif');
     const elTop = document.getElementById('top-badge-notif');
