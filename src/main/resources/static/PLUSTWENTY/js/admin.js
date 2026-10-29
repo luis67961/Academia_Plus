@@ -270,24 +270,9 @@
       });
       if (!ok) return;
 
-      const numRecibo = finance.nuevoRecibo();
-      db.update('pagos', pagoId, {
-        estado: 'Aprobado',
-        revisadoPor: admin.nombre,
-        fechaRevision: fmt.nowISO(),
-        reciboNumero: numRecibo
-      });
-
-      // Notificar al estudiante
-      notifyEstudiante(pg.estudianteId, {
-        titulo: '¡Pago Aprobado!',
-        mensaje: `Tu abono de ${fmt.money(pg.monto)} por "${pen?.concepto || 'Pensión'}" ha sido verificado con éxito. Recibo interno ${numRecibo}.`,
-        tipo: 'success',
-        link: 'historial'
-      });
-
-      audit(`Aprobó pago ${numRecibo} de ${fmt.money(pg.monto)}`, 'Verificación de Pagos', `Estudiante DNI ${est?.dni || '—'} · Op: ${pg.numeroOperacion}`);
-      UI.toast(`Pago aprobado. Recibo generado: ${numRecibo}`, 'success');
+      // Una sola llamada: el servidor aprueba, emite recibo, notifica y audita en una transacción.
+      const saved = window.PT.revisionPagos.aprobar(pagoId);
+      UI.toast(`Pago aprobado. Recibo generado: ${saved.reciboNumero}`, 'success');
       updatePendingBadge();
     },
 
@@ -305,21 +290,8 @@
       });
       if (!r || !r.motivo) return;
 
-      db.update('pagos', pagoId, {
-        estado: 'Rechazado',
-        motivoRechazo: r.motivo,
-        revisadoPor: admin.nombre,
-        fechaRevision: fmt.nowISO()
-      });
-
-      notifyEstudiante(pg.estudianteId, {
-        titulo: 'Pago Observado / Rechazado',
-        mensaje: `Tu reporte de pago de ${fmt.money(pg.monto)} fue rechazado por administración: "${r.motivo}". Por favor, revisa el voucher y vuelve a reportarlo.`,
-        tipo: 'danger',
-        link: 'reportar'
-      });
-
-      audit(`Rechazó pago Op. ${pg.numeroOperacion}`, 'Verificación de Pagos', `Motivo: ${r.motivo}`);
+      // Una sola llamada: el servidor rechaza, notifica y audita en una transacción.
+      window.PT.revisionPagos.rechazar(pagoId, r.motivo);
       UI.toast('Pago rechazado y notificado al estudiante', 'info');
       updatePendingBadge();
     }
@@ -575,40 +547,17 @@
         const est = db.find('estudiantes', estId);
         if (!ciclo || !est) return;
 
-        const numMat = PT.nextCounter('matricula');
-        const codigo = `MAT-${ciclo.fechaInicio.slice(0, 4)}-${fmt.pad(numMat, 4)}`;
-
-        const nuevaMat = db.insert('matriculas', {
-          codigo,
+        // Una sola llamada: el servidor crea la matrícula + cronograma, actualiza al estudiante,
+        // notifica y audita en una transacción (antes eran ~6 llamadas en fila).
+        const saved = window.PT.registroMatriculas.registrar({
           estudianteId: estId,
-          programaId,
           cicloId,
+          programaId,
           fecha,
-          montoMatricula: monto,
-          estado: 'Activa',
-          observacion: 'Matrícula regular',
-          fechaCreacion: fmt.nowISO(),
-          creadoPor: admin.nombre
-        }, 'mat');
-
-        // Generar obligaciones automáticamente
-        const obligaciones = finance.generarObligaciones(nuevaMat, ciclo);
-        db.insertMany('pensiones', obligaciones);
-
-        // Actualizar programa y ciclo actual en el estudiante
-        db.update('estudiantes', estId, { programaId, cicloId });
-
-        // Notificar al estudiante
-        notifyEstudiante(estId, {
-          titulo: '¡Matrícula Registrada!',
-          mensaje: `Tu matrícula al ciclo ${ciclo.nombre} ha sido registrada con código ${codigo}. Se generó tu cronograma de pensiones.`,
-          tipo: 'success',
-          link: 'matriculas'
+          montoMatricula: monto
         });
-
-        audit(`Registró matrícula ${codigo} para estudiante DNI ${est.dni}`, 'Gestión de Matrículas', `Programa: ${ciclo.nombre}`);
         UI.closeModal();
-        UI.toast(`Matrícula ${codigo} creada exitosamente con sus pensiones`);
+        UI.toast(`Matrícula ${saved.codigo} creada exitosamente con sus pensiones`);
         Shell.refresh();
       });
     }
@@ -964,31 +913,8 @@
           audit(`Actualizó datos de estudiante DNI ${est.dni}`, 'Gestión de Estudiantes');
           UI.toast('Estudiante actualizado exitosamente');
         } else {
-          const num = PT.nextCounter('estudiante');
-          const nuevo = db.insert('estudiantes', {
-            ...data,
-            dni,
-            codigo: `PT-2026-${fmt.pad(num, 3)}`,
-            programaId: null,
-            cicloId: null,
-            activo: true,
-            fechaRegistro: fmt.nowISO()
-          }, 'est');
-
-          // Crear automáticamente cuenta de acceso para el estudiante (usuario = dni, pass = dni)
-          db.insert('users', {
-            username: dni,
-            password: dni,
-            rol: 'user',
-            tipo: 'Estudiante',
-            nombre: `${nuevo.nombres} ${nuevo.apellidos}`,
-            email: nuevo.email,
-            estudianteId: nuevo.id,
-            activo: true,
-            fechaCreacion: fmt.nowISO()
-          }, 'usr');
-
-          audit(`Registró nuevo estudiante DNI ${dni} (${nuevo.nombres} ${nuevo.apellidos})`, 'Gestión de Estudiantes');
+          // Una sola llamada: el servidor crea el estudiante + su cuenta de acceso (usuario = DNI) y audita.
+          window.PT.registroEstudiantes.registrar({ ...data, dni });
           UI.toast(`Estudiante registrado. Usuario de portal creado: ${dni}`);
         }
 
@@ -1656,38 +1582,16 @@
         const pen = db.find('pensiones', pensionId);
         if (!est || !pen) return;
 
-        const numOp = `CAJA-${fmt.pad(PT.nextCounter('operacion_caja'), 5)}`;
-        const numRecibo = finance.nuevoRecibo();
-
-        const nuevoPago = db.insert('pagos', {
-          pensionId,
+        // Una sola llamada: el servidor registra el pago aprobado, emite recibo, notifica y audita.
+        const saved = window.PT.revisionPagos.registrarCaja({
           estudianteId: estId,
+          pensionId,
           monto,
-          metodo: 'Efectivo',
-          numeroOperacion: numOp,
-          fechaPago,
-          comprobante: null,
-          estado: 'Aprobado',
-          motivoRechazo: '',
-          observacion: 'Cobro en ventanilla de caja',
-          fechaReporte: fmt.nowISO(),
-          registradoPor: 'admin',
-          revisadoPor: admin.nombre,
-          fechaRevision: fmt.nowISO(),
-          reciboNumero: numRecibo
-        }, 'pag');
-
-        notifyEstudiante(estId, {
-          titulo: 'Pago en Efectivo Registrado',
-          mensaje: `Se registró tu pago en caja de ${fmt.money(monto)} por "${pen.concepto}". Recibo interno ${numRecibo}.`,
-          tipo: 'success',
-          link: 'historial'
+          fechaPago
         });
-
-        audit(`Cobró en caja S/ ${monto} en efectivo (Recibo ${numRecibo})`, 'Verificación de Pagos', `Estudiante DNI ${est.dni} · ${pen.concepto}`);
         UI.closeModal();
-        UI.toast(`Pago registrado con Recibo ${numRecibo}`);
-        docs.printRecibo(nuevoPago.id);
+        UI.toast(`Pago registrado con Recibo ${saved.reciboNumero}`);
+        docs.printRecibo(saved.id);
         Shell.refresh();
       });
     }

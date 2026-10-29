@@ -189,6 +189,44 @@
     }
   };
 
+  /* Revisión de pagos: una sola llamada transaccional (aprobar/rechazar) en vez de 4-5. */
+  function guardarPagoEnCache(saved) {
+    const arr = db.all('pagos').slice();
+    const i = arr.findIndex(x => x.id === saved.id);
+    if (i >= 0) arr[i] = saved; else arr.push(saved);
+    cache.pagos = arr;
+    return saved;
+  }
+  const revisionPagos = {
+    aprobar(id) {
+      return guardarPagoEnCache(http.must('POST', `/api/pagos/${encodeURIComponent(id)}/aprobar`, {}, 'No se pudo aprobar el pago.'));
+    },
+    rechazar(id, motivo) {
+      return guardarPagoEnCache(http.must('POST', `/api/pagos/${encodeURIComponent(id)}/rechazar`, { motivo }, 'No se pudo rechazar el pago.'));
+    },
+    registrarCaja(datos) {
+      return guardarPagoEnCache(http.must('POST', '/api/pagos/registrar-caja', datos, 'No se pudo registrar el pago en caja.'));
+    }
+  };
+
+  /* Registro de matrícula: una sola llamada; luego refresca la caché (cambiaron varias colecciones). */
+  const registroMatriculas = {
+    registrar(datos) {
+      const saved = http.must('POST', '/api/matriculas/registrar', datos, 'No se pudo registrar la matrícula.');
+      hydrate();
+      return saved;
+    }
+  };
+
+  /* Registro de estudiante: una sola llamada (crea ficha + cuenta); luego refresca la caché. */
+  const registroEstudiantes = {
+    registrar(datos) {
+      const saved = http.must('POST', '/api/estudiantes/registrar', datos, 'No se pudo registrar el estudiante.');
+      hydrate();
+      return saved;
+    }
+  };
+
   const nextCounter = name =>
     http.must('POST', `/api/counters/${encodeURIComponent(name)}/next`, undefined, 'No se pudo generar el correlativo.').value;
 
@@ -668,7 +706,7 @@
 
   global.PT = {
     ACADEMIA, MESES, LOGO_SVG,
-    db, finance, auth, audit, notify, notifyEstudiante, nextCounter, notificaciones,
+    db, finance, auth, audit, notify, notifyEstudiante, nextCounter, notificaciones, revisionPagos, registroMatriculas, registroEstudiantes,
     UI, Shell, docs, validators, resetDemo, fakeVoucher,
     fmt: { money, date: fmtDate, dateTime: fmtDateTime, timeAgo, esc, initials, today, nowISO, addDays, daysBetween, round2, sum, parseDate, toISO, pad, norm, debounce, uid, randomPassword, MESES }
   };

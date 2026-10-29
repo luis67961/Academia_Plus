@@ -1,31 +1,40 @@
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Iniciar sesión · PLUSTWENTY | Gestión de Matrículas y Pensiones</title>
-  <meta name="description" content="Portal PLUSTWENTY: sistema de gestión de matrículas, pensiones y pagos de la academia preuniversitaria. Acceso para administradores, estudiantes y apoderados.">
+  <meta name="description"
+    content="Portal PLUSTWENTY: sistema de gestión de matrículas, pensiones y pagos de la academia preuniversitaria. Acceso para administradores, estudiantes y apoderados.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+    rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
-    tailwind.config = { theme: { extend: {
-      colors: { navy: { DEFAULT: '#1E3A8A', 900: '#0F1F4D' }, brand: '#3B82F6', ok: '#10B981', bad: '#EF4444' },
-      fontFamily: { sans: ['"Plus Jakarta Sans"', 'system-ui', 'sans-serif'] }
-    } } };
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: { navy: { DEFAULT: '#1E3A8A', 900: '#0F1F4D' }, brand: '#3B82F6', ok: '#10B981', bad: '#EF4444' },
+          fontFamily: { sans: ['"Plus Jakarta Sans"', 'system-ui', 'sans-serif'] }
+        }
+      }
+    };
   </script>
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
   <link rel="stylesheet" href="css/styles.css">
 </head>
+
 <body class="login-page">
   <main class="min-h-screen grid lg:grid-cols-[1.1fr_1fr]">
 
     <!-- Panel de marca -->
     <section class="login-hero hidden lg:flex" aria-label="Presentación PLUSTWENTY">
       <div class="blob" style="width:420px;height:420px;background:#3B82F6;top:-120px;left:-120px"></div>
-      <div class="blob" style="width:360px;height:360px;background:#10B981;bottom:-140px;right:-60px;animation-delay:-4s"></div>
+      <div class="blob"
+        style="width:360px;height:360px;background:#10B981;bottom:-140px;right:-60px;animation-delay:-4s"></div>
       <div class="hero-grid"></div>
 
       <div class="relative z-10 flex flex-col justify-between h-full w-full max-w-xl mx-auto py-12 px-10">
@@ -38,27 +47,28 @@
         </div>
 
         <div>
-          <span class="inline-flex items-center gap-2 rounded-full bg-white/10 border border-white/20 px-3 py-1 text-xs text-blue-100 font-semibold mb-6">
-            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> Ciclo 2026-II en curso
-          </span>
           <h2 class="text-white text-4xl xl:text-5xl font-extrabold leading-tight tracking-tight">
             Tu ingreso a la universidad,<br><span class="text-gradient">sin pendientes.</span>
           </h2>
-          <p class="text-blue-100/90 mt-5 text-lg leading-relaxed max-w-md">
-            Gestiona matrículas, pensiones y pagos con Yape o Plin desde un solo lugar, con verificación transparente y en tiempo real.
-          </p>
-
           <div class="grid grid-cols-3 gap-3 mt-10">
-            <div class="login-stat"><i class="fa-solid fa-shield-halved"></i><p>Pagos verificados</p></div>
-            <div class="login-stat"><i class="fa-solid fa-bolt"></i><p>Reportes al instante</p></div>
-            <div class="login-stat"><i class="fa-solid fa-bell"></i><p>Alertas de vencimiento</p></div>
+            <div class="login-stat"><i class="fa-solid fa-shield-halved"></i>
+              <p>Pagos verificados</p>
+            </div>
+            <div class="login-stat"><i class="fa-solid fa-bolt"></i>
+              <p>Reportes al instante</p>
+            </div>
+            <div class="login-stat"><i class="fa-solid fa-bell"></i>
+              <p>Alertas de vencimiento</p>
+            </div>
           </div>
         </div>
 
         <div class="glass p-5 flex items-start gap-4">
-          <div class="w-11 h-11 rounded-xl bg-white/15 grid place-items-center text-white shrink-0"><i class="fa-solid fa-quote-left"></i></div>
+          <div class="w-11 h-11 rounded-xl bg-white/15 grid place-items-center text-white shrink-0"><i
+              class="fa-solid fa-quote-left"></i></div>
           <div>
-            <p class="text-white/95 text-sm leading-relaxed">"Ahora sé exactamente cuánto debo y cuándo vence cada cuota. Reporto mi Yape y en horas ya está validado."</p>
+            <p class="text-white/95 text-sm leading-relaxed">"Ahora sé exactamente cuánto debo y cuándo vence cada
+              cuota. Reporto mi Yape y en horas ya está validado."</p>
             <p class="text-blue-200 text-xs mt-2 font-semibold">Camila F. · Ingresante UNT 2026-I</p>
           </div>
         </div>
@@ -70,7 +80,10 @@
       <div class="w-full max-w-md login-card-enter">
         <div class="flex lg:hidden items-center gap-3 mb-8 justify-center">
           <span data-logo="44"></span>
-          <div><p class="font-extrabold text-xl text-navy">PLUSTWENTY</p><p class="text-xs text-slate-500 uppercase tracking-widest">Academia Preuniversitaria</p></div>
+          <div>
+            <p class="font-extrabold text-xl text-navy">PLUSTWENTY</p>
+            <p class="text-xs text-slate-500 uppercase tracking-widest">Academia Preuniversitaria</p>
+          </div>
         </div>
 
         <div class="card login-card">
@@ -81,18 +94,23 @@
             <label class="field">
               <span class="label">Correo electrónico</span>
               <div class="input-icon"><i class="fa-solid fa-envelope"></i>
-                <input id="login-user" name="username" type="email" class="input" autocomplete="username" placeholder="correo@ejemplo.com" maxlength="254" required>
+                <input id="login-user" name="username" type="email" class="input" autocomplete="username"
+                  placeholder="correo@ejemplo.com" maxlength="254" required>
               </div>
             </label>
             <label class="field">
-              <span class="label flex justify-between">Contraseña <a href="#" id="forgot-link" class="text-brand font-semibold text-xs hover:underline">¿Olvidaste tu contraseña?</a></span>
+              <span class="label flex justify-between">Contraseña <a href="#" id="forgot-link"
+                  class="text-brand font-semibold text-xs hover:underline">¿Olvidaste tu contraseña?</a></span>
               <div class="input-icon"><i class="fa-solid fa-lock"></i>
-                <input id="login-pass" name="password" type="password" class="input pr-11" autocomplete="current-password" placeholder="••••••••" required>
-                <button type="button" id="toggle-pass" class="pass-eye" aria-label="Mostrar contraseña"><i class="fa-solid fa-eye"></i></button>
+                <input id="login-pass" name="password" type="password" class="input pr-11"
+                  autocomplete="current-password" placeholder="••••••••" required>
+                <button type="button" id="toggle-pass" class="pass-eye" aria-label="Mostrar contraseña"><i
+                    class="fa-solid fa-eye"></i></button>
               </div>
             </label>
 
-            <div id="login-error" class="alert alert-danger hidden" role="alert"><i class="fa-solid fa-circle-exclamation ai"></i><span></span></div>
+            <div id="login-error" class="alert alert-danger hidden" role="alert"><i
+                class="fa-solid fa-circle-exclamation ai"></i><span></span></div>
 
             <button type="submit" id="login-submit" class="btn btn-primary btn-block btn-lg">
               <span>Ingresar al sistema</span><i class="fa-solid fa-arrow-right"></i>
@@ -101,8 +119,8 @@
         </div>
 
         <div class="flex items-center justify-between mt-6 text-xs text-slate-400">
-          <span>© 2026 PLUSTWENTY · Prototipo funcional</span>
-          <button type="button" id="reset-demo" class="hover:text-red-500 font-semibold"><i class="fa-solid fa-rotate-left"></i> Restablecer datos demo</button>
+          <button type="button" id="reset-demo" class="hover:text-red-500 font-semibold"><i
+              class="fa-solid fa-rotate-left"></i> Restablecer datos demo</button>
         </div>
       </div>
     </section>
@@ -166,4 +184,5 @@
     })();
   </script>
 </body>
+
 </html>
