@@ -933,7 +933,7 @@
       const html = `
         <div class="space-y-6">
           <!-- Cabecera Alumno -->
-          <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-2xl bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100">
+          <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-xl bg-slate-50 border border-slate-200">
             <div class="flex items-center gap-4">
               <div class="avatar avatar-lg">${fmt.initials(est.nombres + ' ' + est.apellidos)}</div>
               <div>
