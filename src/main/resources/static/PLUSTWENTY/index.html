@@ -107,10 +107,7 @@
           </form>
         </div>
 
-        <div class="flex items-center justify-between mt-6 text-xs text-slate-400">
-          <button type="button" id="reset-demo" class="hover:text-red-500 font-semibold"><i
-              class="fa-solid fa-rotate-left"></i> Restablecer datos demo</button>
-        </div>
+        
       </div>
     </section>
   </main>
@@ -121,8 +118,7 @@
       const { auth, UI, LOGO_SVG } = PT;
 
       // Si ya hay sesión activa, redirigir al panel correspondiente
-      const current = auth.current();
-      if (current) { location.replace(auth.home(current)); return; }
+     auth.silentLogout(); 
 
       document.querySelectorAll('[data-logo]').forEach((el, i) => el.innerHTML = LOGO_SVG(+el.dataset.logo, 'lg' + i));
 
