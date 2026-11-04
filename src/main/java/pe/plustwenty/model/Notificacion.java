@@ -8,13 +8,10 @@ import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 
 @Entity
-@Table(
-    name = "notificaciones",
-    indexes = {
-        @Index(name = "idx_notif_user_orden", columnList = "user_id, orden DESC"),
-        @Index(name = "idx_notif_user_leida", columnList = "user_id, leida")
-    }
-)
+@Table(name = "notificacion", indexes = {
+        @Index(name = "ix_notif_user", columnList = "user_id"),
+        @Index(name = "ix_notif_user_leida", columnList = "user_id, leida")
+})
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class Notificacion extends Ordenable {
 
@@ -22,7 +19,7 @@ public class Notificacion extends Ordenable {
     @Column(length = 64)
     public String id;
 
-    @Column(name = "user_id", length = 64)
+    @Column(length = 64)
     public String userId;
 
     public String titulo;
