@@ -865,22 +865,28 @@
     }
   };
 
+
   /* ------------------------------------------------------------------
-     7. NOTIFICACIONES
+     7. NOTIFICACIONES (Optimizado con paginación por bloques y sin doble request)
      ------------------------------------------------------------------ */
+  let notifPageSize = 20;
+
   const NotificacionesView = {
     title: 'Centro de Notificaciones',
     subtitle: 'Avisos de pagos, confirmaciones de recibos y comunicados académicos',
     render() {
-      const notifs = notificaciones.list(0, 100);
-      const unreadCount = notificaciones.count();
+      // Pedimos solo el bloque actual (20 por defecto en lugar de 100)
+      const notifs = notificaciones.list(0, notifPageSize);
+      // Usamos cachedCount() en vez de count() para evitar una 2da consulta bloqueante a Aiven
+      const unreadCount = notificaciones.cachedCount();
+      const hayMas = notifs.length === notifPageSize;
 
       return `
         <div class="card space-y-4">
           <div class="page-head">
             <div>
               <h3 class="page-title">Bandeja de Entrada</h3>
-              <p class="page-desc">Tiene ${unreadCount} notificación(es) sin leer</p>
+              <p class="page-desc" id="notif-unread-text">Tiene ${unreadCount} notificación(es) sin leer</p>
             </div>
             <div class="page-actions">
               ${unreadCount > 0 ? `
@@ -892,9 +898,9 @@
           </div>
 
           ${notifs.length === 0 ? UI.empty('No tienes notificaciones en tu bandeja.', 'fa-bell-slash') : `
-            <div class="space-y-3">
+            <div class="space-y-3" id="lista-notificaciones-dom">
               ${notifs.map(n => `
-                <div class="notif ${n.leida ? '' : 'unread'}">
+                <div class="notif ${n.leida ? '' : 'unread'}" data-notif-card="${n.id}">
                   <div class="icon-bubble ${n.tipo === 'success' ? 'ib-success' : n.tipo === 'danger' ? 'ib-danger' : n.tipo === 'warning' ? 'ib-warning' : 'ib-info'}">
                     <i class="fa-solid ${n.tipo === 'success' ? 'fa-check' : n.tipo === 'danger' ? 'fa-xmark' : n.tipo === 'warning' ? 'fa-triangle-exclamation' : 'fa-bell'}"></i>
                   </div>
@@ -906,12 +912,21 @@
                     <p class="text-xs text-slate-600 mt-1 leading-relaxed">${fmt.esc(n.mensaje)}</p>
                     <div class="mt-3 flex items-center gap-3">
                       ${n.link ? `<button class="btn btn-secondary btn-sm" data-go="${n.link}">Ver en el sistema <i class="fa-solid fa-arrow-right ml-1"></i></button>` : ''}
-                      ${!n.leida ? `<button class="text-xs text-brand font-semibold hover:underline" data-mark-read="${n.id}">Marcar como leída</button>` : '<span class="text-[11px] text-slate-400"><i class="fa-solid fa-check"></i> Leída</span>'}
+                      <span data-status-holder="${n.id}">
+                        ${!n.leida ? `<button class="text-xs text-brand font-semibold hover:underline" data-mark-read="${n.id}">Marcar como leída</button>` : '<span class="text-[11px] text-slate-400"><i class="fa-solid fa-check"></i> Leída</span>'}
+                      </span>
                     </div>
                   </div>
                 </div>
               `).join('')}
             </div>
+            ${hayMas ? `
+              <div class="pt-3 text-center">
+                <button type="button" class="btn btn-secondary btn-sm" id="btn-cargar-mas-notifs">
+                  <i class="fa-solid fa-angles-down"></i> Cargar más notificaciones
+                </button>
+              </div>
+            ` : ''}
           `}
         </div>
       `;
@@ -924,12 +939,24 @@
         Shell.refresh();
       });
 
+      document.getElementById('btn-cargar-mas-notifs')?.addEventListener('click', () => {
+        notifPageSize = Math.min(notifPageSize + 20, 100);
+        Shell.refresh();
+      });
+
       root.addEventListener('click', e => {
         const btnM = e.target.closest('[data-mark-read]');
         if (btnM) {
-          notificaciones.marcarLeida(btnM.dataset.markRead);
+          const id = btnM.dataset.markRead;
+          notificaciones.marcarLeida(id);
           updateNotifBadges();
-          Shell.refresh();
+          // Actualizamos el DOM directamente sin recargar toda la vista ni pedir 20 filas de nuevo a Aiven
+          const card = root.querySelector(`[data-notif-card="${id}"]`);
+          const holder = root.querySelector(`[data-status-holder="${id}"]`);
+          if (card) card.classList.remove('unread');
+          if (holder) holder.innerHTML = '<span class="text-[11px] text-slate-400"><i class="fa-solid fa-check"></i> Leída</span>';
+          const txt = document.getElementById('notif-unread-text');
+          if (txt) txt.textContent = `Tiene ${notificaciones.cachedCount()} notificación(es) sin leer`;
         }
       });
     }

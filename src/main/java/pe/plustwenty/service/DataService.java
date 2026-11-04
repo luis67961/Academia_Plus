@@ -1,4 +1,7 @@
 package pe.plustwenty.service;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Slice;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -154,7 +157,7 @@ public class DataService {
                 return admin ? pagos.findAll(ORDEN)
                         : (est == null ? new ArrayList<Pago>() : pagos.findByEstudianteId(est, ORDEN));
             case "notificaciones":
-                return admin ? notificaciones.findAll(ORDEN) : notificaciones.findByUserId(me.id, ORDEN);
+                return notificaciones.findByUserId(me.id, PageRequest.of(0, 50, Sort.by(Sort.Direction.DESC, "orden")));
             case "auditoria":
                 // Solo los más recientes: la bitácora crece sin límite y no debe traerse entera.
                 return admin ? auditorias.findTop500ByOrderByOrdenDesc() : new ArrayList<Auditoria>();
@@ -176,20 +179,31 @@ public class DataService {
     }
 
     @Transactional
+    @SuppressWarnings({"rawtypes", "unchecked"})
     public List<Object> insertarVarios(String col, JsonNode lista, Usuario me) {
         if (lista == null || !lista.isArray()) {
             throw new ApiException(400, "Se esperaba una lista de registros.");
         }
         autorizarInsercion(col, me);
-        List<Object> guardados = new ArrayList<>();
+        List<Object> entidades = new ArrayList<>(lista.size());
         for (JsonNode item : lista) {
             Object entidad = convertir(col, item);
             validarInsercion(col, entidad, me);
-            guardados.add(persistir(col, entidad));
+            ((Ordenable) entidad).orden = counters.next("orden");
+            if (entidad instanceof Usuario) {
+                Usuario u = (Usuario) entidad;
+                if (u.password != null) {
+                    u.password = encoder.encode(u.password);
+                }
+            }
+            if (entidad instanceof Pago) {
+                guardarComprobante((Pago) entidad);
+            }
+            entidades.add(entidad);
         }
-        return guardados;
+        JpaRepository repo = repo(col);
+        return repo.saveAll(entidades);
     }
-
     /** Carga de datos semilla: sin validaciones de negocio ni permisos. */
     @Transactional
     public Object importar(String col, JsonNode item) {
