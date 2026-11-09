@@ -10,3 +10,11 @@ data/
 
 # Credenciales locales de BD. Nunca subir. Ver config/db.properties.example
 config/db.properties
+
+# Carpetas de asistentes de IA (worktrees y sesiones locales). No versionar.
+.claude/
+.codex-worktrees/
+.codex/
+
+# Notas locales de credenciales. Nunca subir al repositorio.
+CREDENCIALES.md
