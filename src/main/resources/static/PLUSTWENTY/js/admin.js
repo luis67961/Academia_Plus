@@ -1354,6 +1354,7 @@
     subtitle: 'Auditoría y conciliación de pagos reportados vía Yape, Plin y registro en efectivo',
     render(params) {
       const tab = params.tab || 'Pendiente';
+      const busqueda = (params.q || '').toLowerCase();
       const pagos = db.all('pagos').slice().sort((a, b) => b.fechaReporte.localeCompare(a.fechaReporte));
       const estudiantes = db.all('estudiantes');
 
@@ -1362,8 +1363,14 @@
       const countRechazados = pagos.filter(p => p.estado === 'Rechazado').length;
 
       const filtrados = pagos.filter(p => {
-        if (tab === 'todos') return true;
-        return p.estado === tab;
+        if (tab !== 'todos' && p.estado !== tab) return false;
+        if (busqueda) {
+          const est = estudiantes.find(e => e.id === p.estudianteId);
+          const pen = db.find('pensiones', p.pensionId);
+          const t = `${est?.nombres || ''} ${est?.apellidos || ''} ${est?.dni || ''} ${p.numeroOperacion || ''} ${pen?.concepto || ''}`.toLowerCase();
+          if (!t.includes(busqueda)) return false;
+        }
+        return true;
       });
 
       return `
@@ -1394,6 +1401,14 @@
             <button class="tab ${tab === 'todos' ? 'active' : ''}" data-tab="todos">
               Todos los Pagos <span class="count">${pagos.length}</span>
             </button>
+          </div>
+
+          <!-- Buscador -->
+          <div class="filters" style="--fcols:1">
+            <div class="input-icon">
+              <i class="fa-solid fa-magnifying-glass"></i>
+              <input type="search" id="filtro-pag-q" class="input" placeholder="Buscar por estudiante, DNI, N° de operación o concepto..." value="${fmt.esc(params.q || '')}">
+            </div>
           </div>
 
           ${tab === 'Pendiente' && countPendientes > 0 ? `
@@ -1470,9 +1485,13 @@
     mount(params, root) {
       root.querySelectorAll('.tab').forEach(t => {
         t.addEventListener('click', () => {
-          Shell.go('pagos', { tab: t.dataset.tab });
+          Shell.go('pagos', { tab: t.dataset.tab, q: params.q || '' });
         });
       });
+
+      document.getElementById('filtro-pag-q')?.addEventListener('input', fmt.debounce(() => {
+        Shell.go('pagos', { tab: params.tab || 'Pendiente', q: document.getElementById('filtro-pag-q').value.trim() });
+      }, 300));
 
       document.getElementById('btn-pago-efectivo')?.addEventListener('click', () => PagosView.modalPagoEfectivo());
 
@@ -1920,8 +1939,19 @@
   const UsuariosView = {
     title: 'Gestión de Usuarios y Roles',
     subtitle: 'Administración de accesos, roles de sistema y reseteo de claves',
-    render() {
+    render(params = {}) {
       const users = db.all('users');
+      const busqueda = (params.q || '').toLowerCase();
+      const rolFiltro = params.rol || '';
+
+      const filtrados = users.filter(u => {
+        if (rolFiltro && u.rol !== rolFiltro) return false;
+        if (busqueda) {
+          const t = `${u.username || ''} ${u.nombre || ''} ${u.email || ''}`.toLowerCase();
+          if (!t.includes(busqueda)) return false;
+        }
+        return true;
+      });
 
       return `
         <div class="card space-y-4">
@@ -1937,7 +1967,20 @@
             </div>
           </div>
 
-          ${UI.table({
+          <!-- Filtros -->
+          <div class="filters" style="--fcols:2">
+            <div class="input-icon">
+              <i class="fa-solid fa-magnifying-glass"></i>
+              <input type="search" id="filtro-usr-q" class="input" placeholder="Buscar por usuario, nombre o correo..." value="${fmt.esc(params.q || '')}">
+            </div>
+            <select id="filtro-usr-rol" class="select">
+              <option value="">Todos los roles</option>
+              <option value="admin" ${rolFiltro === 'admin' ? 'selected' : ''}>Administradores</option>
+              <option value="user" ${rolFiltro === 'user' ? 'selected' : ''}>Estudiantes / Apoderados</option>
+            </select>
+          </div>
+
+          ${filtrados.length === 0 ? UI.empty('No se encontraron cuentas con los filtros aplicados.') : UI.table({
             cols: [
               { label: 'Usuario / Login' },
               { label: 'Nombre Completo' },
@@ -1947,7 +1990,7 @@
               { label: 'Estado' },
               { label: 'Acciones', cls: 'nowrap text-right' }
             ],
-            rows: users.map(u => {
+            rows: filtrados.map(u => {
               const est = u.estudianteId ? db.find('estudiantes', u.estudianteId) : null;
               const isMe = u.id === admin.id;
 
@@ -1973,6 +2016,15 @@
       `;
     },
     mount(params, root) {
+      const applyFilters = () => {
+        Shell.go('usuarios', {
+          q: document.getElementById('filtro-usr-q').value.trim(),
+          rol: document.getElementById('filtro-usr-rol').value
+        });
+      };
+      document.getElementById('filtro-usr-q')?.addEventListener('input', fmt.debounce(applyFilters, 300));
+      document.getElementById('filtro-usr-rol')?.addEventListener('change', applyFilters);
+
       document.getElementById('btn-nuevo-usuario')?.addEventListener('click', () => UsuariosView.modalCrear());
 
       root.addEventListener('click', async e => {

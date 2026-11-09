@@ -653,12 +653,26 @@
       const s = document.getElementById('page-subtitle'); if (s) s.textContent = v.subtitle || '';
       document.title = `${v.title} · PLUSTWENTY`;
       const root = document.getElementById('view-root');
+      // Preservar foco y cursor del campo de filtro activo: al re-renderizar con
+      // innerHTML el input se recrea y, sin esto, el buscador pierde el foco en
+      // cada tecla durante el filtrado en vivo.
+      const ae = document.activeElement;
+      const focusId = (ae && root && root.contains(ae) && ae.id) ? ae.id : null;
+      let selStart = null, selEnd = null;
+      if (focusId) { try { selStart = ae.selectionStart; selEnd = ae.selectionEnd; } catch (_) {} }
       try {
         root.innerHTML = `<div class="view-enter">${v.render(params)}</div>`;
         v.mount && v.mount(params, root);
       } catch (err) {
         console.error(err);
         root.innerHTML = UI.empty('Ocurrió un error al cargar esta sección.', 'fa-bug');
+      }
+      if (focusId) {
+        const again = document.getElementById(focusId);
+        if (again) {
+          again.focus();
+          if (selStart !== null) { try { again.setSelectionRange(selStart, selEnd); } catch (_) {} }
+        }
       }
       this.closeSidebar();
       window.scrollTo(0, 0);
