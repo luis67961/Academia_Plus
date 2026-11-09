@@ -463,10 +463,7 @@
         <form id="form-nueva-mat" class="space-y-4">
           <div class="field">
             <label class="label">Estudiante <span class="text-red-500">*</span></label>
-            <select name="estudianteId" class="select" required>
-              <option value="">Seleccione estudiante...</option>
-              ${estudiantes.map(e => `<option value="${e.id}">${fmt.esc(e.nombres)} ${fmt.esc(e.apellidos)} (DNI: ${e.dni})</option>`).join('')}
-            </select>
+            ${UI.searchSelect({ name: 'estudianteId', options: estudiantes.map(e => ({ value: e.id, label: `${e.nombres} ${e.apellidos} (DNI: ${e.dni})`, search: `${e.nombres} ${e.apellidos} ${e.dni}` })), placeholder: 'Buscar por nombre o DNI...', required: true })}
           </div>
 
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -515,6 +512,7 @@
         body: html,
         size: 'md'
       });
+      UI.initSearchSelect();
 
       const selPrg = document.getElementById('mat-modal-prg');
       const selCic = document.getElementById('mat-modal-cic');
@@ -545,7 +543,8 @@
 
         const ciclo = db.find('ciclos', cicloId);
         const est = db.find('estudiantes', estId);
-        if (!ciclo || !est) return;
+        if (!est) return UI.toast('Seleccione un estudiante de la lista');
+        if (!ciclo) return UI.toast('Seleccione el programa y el ciclo');
 
         // Una sola llamada: el servidor crea la matrícula + cronograma, actualiza al estudiante,
         // notifica y audita en una transacción (antes eran ~6 llamadas en fila).
@@ -1156,10 +1155,7 @@
         <form id="form-nueva-obl" class="space-y-4">
           <div class="field">
             <label class="label">Estudiante <span class="text-red-500">*</span></label>
-            <select name="estudianteId" class="select" required>
-              <option value="">Seleccione estudiante...</option>
-              ${estudiantes.map(e => `<option value="${e.id}">${fmt.esc(e.nombres)} ${fmt.esc(e.apellidos)} (DNI: ${e.dni})</option>`).join('')}
-            </select>
+            ${UI.searchSelect({ name: 'estudianteId', options: estudiantes.map(e => ({ value: e.id, label: `${e.nombres} ${e.apellidos} (DNI: ${e.dni})`, search: `${e.nombres} ${e.apellidos} ${e.dni}` })), placeholder: 'Buscar por nombre o DNI...', required: true })}
           </div>
 
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1210,6 +1206,7 @@
         body: html,
         size: 'md'
       });
+      UI.initSearchSelect();
 
       document.getElementById('form-nueva-obl').addEventListener('submit', e => {
         e.preventDefault();
@@ -1217,6 +1214,7 @@
         const estId = fd.get('estudianteId');
         const cicloId = fd.get('cicloId');
         const est = db.find('estudiantes', estId);
+        if (!est) return UI.toast('Seleccione un estudiante de la lista');
 
         const nueva = db.insert('pensiones', {
           matriculaId: null,
@@ -1529,10 +1527,7 @@
         <form id="form-pago-efectivo" class="space-y-4">
           <div class="field">
             <label class="label">Estudiante <span class="text-red-500">*</span></label>
-            <select name="estudianteId" id="ef-estudiante" class="select" required>
-              <option value="">Seleccione estudiante...</option>
-              ${estudiantes.map(e => `<option value="${e.id}">${fmt.esc(e.nombres)} ${fmt.esc(e.apellidos)} (DNI: ${e.dni})</option>`).join('')}
-            </select>
+            ${UI.searchSelect({ name: 'estudianteId', id: 'ef-estudiante', options: estudiantes.map(e => ({ value: e.id, label: `${e.nombres} ${e.apellidos} (DNI: ${e.dni})`, search: `${e.nombres} ${e.apellidos} ${e.dni}` })), placeholder: 'Buscar por nombre o DNI...', required: true })}
           </div>
 
           <div class="field">
@@ -1567,6 +1562,7 @@
         body: html,
         size: 'md'
       });
+      UI.initSearchSelect();
 
       const selE = document.getElementById('ef-estudiante');
       const selP = document.getElementById('ef-pension');
@@ -1599,7 +1595,8 @@
 
         const est = db.find('estudiantes', estId);
         const pen = db.find('pensiones', pensionId);
-        if (!est || !pen) return;
+        if (!est) return UI.toast('Seleccione un estudiante de la lista');
+        if (!pen) return UI.toast('Seleccione la pensión u obligación a pagar');
 
         // Una sola llamada: el servidor registra el pago aprobado, emite recibo, notifica y audita.
         const saved = window.PT.revisionPagos.registrarCaja({
@@ -2061,10 +2058,7 @@
             </div>
             <div class="field" id="wrap-estudiante">
               <label class="label">Vincular a Estudiante</label>
-              <select name="estudianteId" class="select">
-                <option value="">Sin vinculación...</option>
-                ${estudiantes.map(e => `<option value="${e.id}">${fmt.esc(e.nombres)} ${fmt.esc(e.apellidos)} (DNI: ${e.dni})</option>`).join('')}
-              </select>
+              ${UI.searchSelect({ name: 'estudianteId', options: estudiantes.map(e => ({ value: e.id, label: `${e.nombres} ${e.apellidos} (DNI: ${e.dni})`, search: `${e.nombres} ${e.apellidos} ${e.dni}` })), placeholder: 'Buscar por nombre o DNI (opcional)...' })}
             </div>
           </div>
 
@@ -2103,6 +2097,7 @@
         body: html,
         size: 'md'
       });
+      UI.initSearchSelect();
 
       document.getElementById('form-nuevo-user').addEventListener('submit', e => {
         e.preventDefault();
