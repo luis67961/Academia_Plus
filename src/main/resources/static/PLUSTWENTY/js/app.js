@@ -71,9 +71,21 @@
   const validators = {
     dni: v => /^\d{8}$/.test(String(v || '').trim()),
     email: v => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(v || '').trim()),
-    phone: v => /^\d{9}$/.test(String(v || '').replace(/\s/g, '')),
+    // Celular peruano: 9 dígitos que empiezan con 9.
+    phone: v => /^9\d{8}$/.test(String(v || '').replace(/\s/g, '')),
     username: v => /^[a-z0-9._]{3,24}$/.test(String(v || '')),
-    operacion: v => /^\d{6}$/.test(String(v || '').trim())
+    operacion: v => /^\d{6}$/.test(String(v || '').trim()),
+    // Fecha de nacimiento: válida, en el pasado (ni hoy ni futura) y con edad entre 10 y 100 años.
+    birthdate: v => {
+      const d = parseDate(v);
+      if (!d || isNaN(d)) return false;
+      const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+      if (d >= hoy) return false;
+      let edad = hoy.getFullYear() - d.getFullYear();
+      const m = hoy.getMonth() - d.getMonth();
+      if (m < 0 || (m === 0 && hoy.getDate() < d.getDate())) edad--;
+      return edad >= 10 && edad <= 100;
+    }
   };
 
   /* ------------------------------------------------------------------
