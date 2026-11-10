@@ -29,6 +29,157 @@
     if (elTop) elTop.textContent = txt;
   }
 
+
+  /* ------------------------------------------------------------------
+     Buscador de estudiantes con autocompletado (DNI, apellidos o nombres)
+     Reemplaza al <select> con todos los estudiantes. Mantiene un
+     <input type="hidden" name="..."> con el id elegido y dispara "change".
+     ------------------------------------------------------------------ */
+  const Buscador = (() => {
+    const norm = t => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+    // Tipos de búsqueda disponibles: de dónde salen los datos y cómo se muestran/buscan
+    const TIPOS = {
+      estudiante: {
+        placeholder: 'Escriba DNI, apellidos o nombres...',
+        vacio: 'Sin resultados. Pruebe con otro DNI, apellido o nombre.',
+        items: todos => db.all('estudiantes').filter(e => todos || e.activo),
+        etiqueta: e => `${e.nombres} ${e.apellidos} (DNI: ${e.dni})`,
+        texto: e => `${e.dni} ${e.nombres} ${e.apellidos} ${e.apellidos} ${e.nombres}`,
+        titulo: e => `${fmt.esc(e.apellidos)}, ${fmt.esc(e.nombres)}`,
+        detalle: e => `DNI ${fmt.esc(e.dni)}`
+      },
+      programa: {
+        placeholder: 'Escriba el nombre o las siglas del programa...',
+        vacio: 'Sin resultados. Pruebe con otro nombre o siglas.',
+        items: todos => db.all('programas').filter(p => todos || p.activo),
+        etiqueta: p => `${p.nombre} (${p.siglas})`,
+        texto: p => `${p.nombre} ${p.siglas}`,
+        titulo: p => fmt.esc(p.nombre),
+        detalle: p => fmt.esc(p.siglas)
+      }
+    };
+    const cfgDe = w => TIPOS[w.dataset.tipo] || TIPOS.estudiante;
+
+    // valor: id preseleccionado · filtro: modo "filtro de tabla" (opcional, incluye inactivos y restaura el texto al salir)
+    function html({ tipo = 'estudiante', name = 'estudianteId', id = '', requerido = true, placeholder, valor = '', filtro = false } = {}) {
+      const cfg = TIPOS[tipo];
+      placeholder = placeholder || cfg.placeholder;
+      if (filtro) requerido = false;
+      const sel = valor ? cfg.items(true).find(x => x.id === valor) : null;
+      return `<div class="est-picker" data-tipo="${tipo}"${filtro ? ' data-filtro' : ''}>
+        <input type="text" class="input est-picker-input" autocomplete="off" role="combobox" aria-expanded="false"
+               placeholder="${placeholder}" value="${sel ? fmt.esc(cfg.etiqueta(sel)) : ''}" ${requerido ? 'required' : ''}>
+        <input type="hidden" name="${name}" ${id ? `id="${id}"` : ''} value="${sel ? sel.id : ''}">
+        <div class="est-picker-list" role="listbox" hidden></div>
+      </div>`;
+    }
+
+    const partes = w => ({
+      txt: w.querySelector('.est-picker-input'),
+      hid: w.querySelector('input[type=hidden]'),
+      list: w.querySelector('.est-picker-list')
+    });
+
+    function cerrar(w) {
+      const { txt, list } = partes(w);
+      list.hidden = true; txt.setAttribute('aria-expanded', 'false');
+    }
+
+    function validar(w) {
+      const { txt, hid } = partes(w);
+      txt.setCustomValidity(txt.value.trim() && !hid.value ? 'Seleccione una opción de la lista de sugerencias.' : '');
+    }
+
+    function mostrar(w) {
+      const { txt, list } = partes(w);
+      const cfg = cfgDe(w);
+      const tokens = norm(txt.value).split(/\s+/).filter(Boolean);
+      if (!tokens.length) { cerrar(w); return; }   // sin texto: no se muestra la lista
+      const hallados = cfg.items(w.hasAttribute('data-filtro')).filter(e => {
+        const hay = norm(cfg.texto(e));
+        return tokens.every(t => hay.includes(t));
+      });
+      const visibles = hallados.slice(0, 8);
+      list.innerHTML = visibles.length
+        ? visibles.map((e, i) => `<div class="est-picker-item${i === 0 ? ' active' : ''}" role="option" data-id="${e.id}">
+            <span class="est-picker-name">${cfg.titulo(e)}</span>
+            <span class="est-picker-dni">${cfg.detalle(e)}</span></div>`).join('') +
+          (hallados.length > visibles.length ? `<div class="est-picker-more">${hallados.length - visibles.length} más… siga escribiendo para filtrar</div>` : '')
+        : `<div class="est-picker-empty">${cfg.vacio}</div>`;
+      list.hidden = false; txt.setAttribute('aria-expanded', 'true');
+    }
+
+    function elegir(w, id) {
+      const cfg = cfgDe(w);
+      const e = cfg.items(w.hasAttribute('data-filtro')).find(x => x.id === id);
+      if (!e) return;
+      const { txt, hid } = partes(w);
+      txt.value = cfg.etiqueta(e);
+      hid.value = e.id;
+      validar(w);
+      cerrar(w);
+      hid.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    function mover(w, dir) {
+      const items = [...w.querySelectorAll('.est-picker-item')];
+      if (!items.length) return;
+      let i = items.findIndex(x => x.classList.contains('active'));
+      items[i]?.classList.remove('active');
+      i = (i + dir + items.length) % items.length;
+      items[i].classList.add('active');
+      items[i].scrollIntoView({ block: 'nearest' });
+    }
+
+    // Delegación de eventos: funciona en cualquier modal sin inicializar nada
+    document.addEventListener('input', ev => {
+      const txt = ev.target.closest?.('.est-picker-input');
+      if (!txt) return;
+      const w = txt.closest('.est-picker');
+      const { hid } = partes(w);
+      // En un filtro, la selección solo se quita al vaciar el cuadro (evita recargar la tabla mientras se escribe)
+      if (hid.value && (!w.hasAttribute('data-filtro') || !txt.value.trim())) {
+        hid.value = ''; hid.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      validar(w);
+      mostrar(w);
+    });
+    document.addEventListener('click', ev => {
+      const txt = ev.target.closest?.('.est-picker-input');
+      if (txt && txt.value.trim() && !partes(txt.closest('.est-picker')).hid.value) mostrar(txt.closest('.est-picker'));
+    });
+    document.addEventListener('keydown', ev => {
+      const txt = ev.target.closest?.('.est-picker-input');
+      if (!txt) return;
+      const w = txt.closest('.est-picker');
+      const { list } = partes(w);
+      if (ev.key === 'ArrowDown') { ev.preventDefault(); if (list.hidden) mostrar(w); else mover(w, 1); }
+      else if (ev.key === 'ArrowUp') { ev.preventDefault(); mover(w, -1); }
+      else if (ev.key === 'Enter' && !list.hidden) {
+        ev.preventDefault();
+        const a = w.querySelector('.est-picker-item.active');
+        if (a) elegir(w, a.dataset.id);
+      } else if (ev.key === 'Escape' && !list.hidden) { ev.stopPropagation(); cerrar(w); }
+    });
+    document.addEventListener('focusout', ev => {
+      const txt = ev.target.closest?.('.est-picker-input');
+      const w = txt?.closest('.est-picker');
+      if (!w || !w.hasAttribute('data-filtro')) return;
+      const cfg = cfgDe(w);
+      const { hid } = partes(w);
+      const sel = hid.value ? cfg.items(true).find(x => x.id === hid.value) : null;
+      txt.value = sel ? cfg.etiqueta(sel) : '';
+      validar(w); cerrar(w);
+    });
+    document.addEventListener('mousedown', ev => {
+      const item = ev.target.closest?.('.est-picker-item');
+      if (item) { ev.preventDefault(); elegir(item.closest('.est-picker'), item.dataset.id); return; }
+      document.querySelectorAll('.est-picker').forEach(w => { if (!w.contains(ev.target)) cerrar(w); });
+    });
+
+    return { html };
+  })();
+
   /* ------------------------------------------------------------------
      1. DASHBOARD
      ------------------------------------------------------------------ */
@@ -346,10 +497,7 @@
               <i class="fa-solid fa-magnifying-glass"></i>
               <input type="search" id="filtro-mat-q" class="input" placeholder="Buscar por código, DNI o estudiante..." value="${fmt.esc(params.q || '')}">
             </div>
-            <select id="filtro-mat-prg" class="select">
-              <option value="">Todos los programas</option>
-              ${programas.map(p => `<option value="${p.id}" ${prgFiltro === p.id ? 'selected' : ''}>${fmt.esc(p.nombre)} (${p.siglas})</option>`).join('')}
-            </select>
+            ${Buscador.html({ tipo: 'programa', name: 'prg', id: 'filtro-mat-prg', filtro: true, valor: prgFiltro, placeholder: 'Todos los programas (escriba nombre o siglas)' })}
             <select id="filtro-mat-cic" class="select">
               <option value="">Todos los ciclos</option>
               ${ciclos.map(c => `<option value="${c.id}" ${cicFiltro === c.id ? 'selected' : ''}>${fmt.esc(c.nombre)}</option>`).join('')}
@@ -463,19 +611,13 @@
         <form id="form-nueva-mat" class="space-y-4">
           <div class="field">
             <label class="label">Estudiante <span class="text-red-500">*</span></label>
-            <select name="estudianteId" class="select" required>
-              <option value="">Seleccione estudiante...</option>
-              ${estudiantes.map(e => `<option value="${e.id}">${fmt.esc(e.nombres)} ${fmt.esc(e.apellidos)} (DNI: ${e.dni})</option>`).join('')}
-            </select>
+            ${Buscador.html({  })}
           </div>
 
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div class="field">
               <label class="label">Programa Académico <span class="text-red-500">*</span></label>
-              <select name="programaId" id="mat-modal-prg" class="select" required>
-                <option value="">Seleccione programa...</option>
-                ${programas.map(p => `<option value="${p.id}">${fmt.esc(p.nombre)} (${p.siglas})</option>`).join('')}
-              </select>
+              ${Buscador.html({ tipo: 'programa', name: 'programaId', id: 'mat-modal-prg' })}
             </div>
             <div class="field">
               <label class="label">Ciclo Académico <span class="text-red-500">*</span></label>
@@ -668,10 +810,7 @@
               <i class="fa-solid fa-magnifying-glass"></i>
               <input type="search" id="filtro-est-q" class="input" placeholder="Buscar por DNI, nombres, apellidos o apoderado..." value="${fmt.esc(params.q || '')}">
             </div>
-            <select id="filtro-est-prg" class="select">
-              <option value="">Todos los programas</option>
-              ${programas.map(p => `<option value="${p.id}" ${prgFilter === p.id ? 'selected' : ''}>${fmt.esc(p.nombre)}</option>`).join('')}
-            </select>
+            ${Buscador.html({ tipo: 'programa', name: 'prg', id: 'filtro-est-prg', filtro: true, valor: prgFilter, placeholder: 'Todos los programas (escriba nombre o siglas)' })}
             <select id="filtro-est-activo" class="select">
               <option value="">Todos los estados</option>
               <option value="activo" ${estadoFilter === 'activo' ? 'selected' : ''}>Activos</option>
@@ -1156,10 +1295,7 @@
         <form id="form-nueva-obl" class="space-y-4">
           <div class="field">
             <label class="label">Estudiante <span class="text-red-500">*</span></label>
-            <select name="estudianteId" class="select" required>
-              <option value="">Seleccione estudiante...</option>
-              ${estudiantes.map(e => `<option value="${e.id}">${fmt.esc(e.nombres)} ${fmt.esc(e.apellidos)} (DNI: ${e.dni})</option>`).join('')}
-            </select>
+            ${Buscador.html({  })}
           </div>
 
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1352,19 +1488,188 @@
   const PagosView = {
     title: 'Verificación de Pagos',
     subtitle: 'Auditoría y conciliación de pagos reportados vía Yape, Plin y registro en efectivo',
+    POR_PAGINA: 20,
+
+    /* Estado de filtros → se guarda en la URL (#pagos?...) para sobrevivir a F5 y a refrescos tras aprobar/rechazar */
+    leer(params) {
+      return {
+        tab: ['Pendiente', 'Aprobado', 'Rechazado', 'todos'].includes(params.tab) ? params.tab : 'Pendiente',
+        q: params.q || '',
+        metodo: params.metodo || '',
+        desde: params.desde || '',
+        hasta: params.hasta || '',
+        page: Math.max(1, parseInt(params.page, 10) || 1)
+      };
+    },
+    guardarUrl(st) {
+      const q = new URLSearchParams();
+      if (st.tab !== 'Pendiente') q.set('tab', st.tab);
+      ['q', 'metodo', 'desde', 'hasta'].forEach(k => { if (st[k]) q.set(k, st[k]); });
+      if (st.page > 1) q.set('page', st.page);
+      const qs = q.toString();
+      history.replaceState(null, '', '#pagos' + (qs ? '?' + qs : ''));
+    },
+    hayFiltros: st => !!(st.q || st.metodo || st.desde || st.hasta),
+
+    fechaDe: p => p.fechaPago || String(p.fechaReporte || '').slice(0, 10),
+
+    /* Pagos que cumplen búsqueda + método + fechas (sin mirar la pestaña de estado) */
+    base(st) {
+      const tokens = fmt.norm(st.q).split(/\s+/).filter(Boolean);
+      return db.all('pagos').slice()
+        .sort((x, y) => y.fechaReporte.localeCompare(x.fechaReporte))
+        .filter(p => {
+          if (st.metodo && p.metodo !== st.metodo) return false;
+          const f = PagosView.fechaDe(p);
+          if (st.desde && f < st.desde) return false;
+          if (st.hasta && f > st.hasta) return false;
+          if (tokens.length) {
+            const est = db.find('estudiantes', p.estudianteId);
+            const pen = db.find('pensiones', p.pensionId);
+            const hay = fmt.norm(`${est?.nombres || ''} ${est?.apellidos || ''} ${est?.dni || ''} ${p.numeroOperacion || ''} ${pen?.concepto || ''} ${p.reciboNumero || ''} ${p.metodo || ''}`);
+            if (!tokens.every(t => hay.includes(t))) return false;
+          }
+          return true;
+        });
+    },
+
+    fila(p) {
+      const est = db.find('estudiantes', p.estudianteId);
+      const pen = db.find('pensiones', p.pensionId);
+      const isPend = p.estado === 'Pendiente';
+      return [
+        `<div>
+          <span class="text-xs font-bold text-slate-800">${fmt.date(p.fechaPago)}</span>
+          <p class="text-[11px] text-slate-400">${fmt.timeAgo(p.fechaReporte)}</p>
+        </div>`,
+        `<div>
+          <a href="#estudiantes?id=${p.estudianteId}" class="font-bold text-slate-800 hover:text-brand">${fmt.esc(est ? `${est.nombres} ${est.apellidos}` : '—')}</a>
+          <p class="text-xs text-slate-400">DNI ${est?.dni || '—'}</p>
+        </div>`,
+        `<span class="font-semibold text-slate-700">${fmt.esc(pen?.concepto || 'Cuota')}</span>`,
+        UI.method(p.metodo),
+        `<code class="text-xs bg-slate-100 px-2 py-1 rounded font-bold">${fmt.esc(p.numeroOperacion)}</code>`,
+        p.comprobante ? `
+          <button class="flex items-center gap-2 text-xs font-semibold text-brand hover:underline" data-view-voucher="${p.id}">
+            <img src="${p.comprobante}" class="w-8 h-8 rounded object-cover border" alt="Voucher">
+            <span>Ver voucher</span>
+          </button>
+        ` : '<span class="text-xs text-slate-400">Sin voucher (Efectivo)</span>',
+        `<span class="font-extrabold text-base ${p.estado === 'Aprobado' ? 'text-emerald-600' : 'text-slate-900'}">${fmt.money(p.monto)}</span>`,
+        `<div>
+          ${UI.badge(p.estado)}
+          ${p.motivoRechazo ? `<p class="text-[11px] text-red-500 mt-1 max-w-[160px] truncate" title="${fmt.esc(p.motivoRechazo)}">${fmt.esc(p.motivoRechazo)}</p>` : ''}
+        </div>`,
+        `<div class="actions">
+          ${isPend ? `
+            <button class="btn btn-success btn-sm" data-approve="${p.id}">
+              <i class="fa-solid fa-check"></i> Aprobar
+            </button>
+            <button class="btn btn-danger btn-sm" data-reject="${p.id}">
+              <i class="fa-solid fa-xmark"></i> Rechazar
+            </button>
+          ` : ''}
+          ${p.estado === 'Aprobado' ? `
+            <button class="btn btn-secondary btn-sm" data-print-recibo="${p.id}">
+              <i class="fa-solid fa-print"></i> Recibo ${p.reciboNumero || ''}
+            </button>
+          ` : ''}
+        </div>`
+      ];
+    },
+
+    /* Bloque que se repinta al filtrar: pestañas (con contadores), resumen, tabla y paginación */
+    resultado(st) {
+      const base = PagosView.base(st);
+      const cuenta = e => base.filter(p => p.estado === e).length;
+      const filtrados = st.tab === 'todos' ? base : base.filter(p => p.estado === st.tab);
+
+      const total = filtrados.length;
+      const paginas = Math.max(1, Math.ceil(total / PagosView.POR_PAGINA));
+      st.page = Math.min(st.page, paginas);
+      const ini = (st.page - 1) * PagosView.POR_PAGINA;
+      const visibles = filtrados.slice(ini, ini + PagosView.POR_PAGINA);
+
+      const montoTotal = fmt.sum(filtrados, p => p.monto);
+      const montoAprob = fmt.sum(filtrados.filter(p => p.estado === 'Aprobado'), p => p.monto);
+
+      // números de página: 1 … actual-1 actual actual+1 … última
+      const nums = [];
+      for (let i = 1; i <= paginas; i++) {
+        if (i === 1 || i === paginas || Math.abs(i - st.page) <= 1) nums.push(i);
+        else if (nums[nums.length - 1] !== '…') nums.push('…');
+      }
+      const paginacion = paginas > 1 ? `
+        <div class="flex items-center justify-between flex-wrap gap-3 pt-1">
+          <p class="text-xs text-slate-500">Mostrando <b>${ini + 1}–${ini + visibles.length}</b> de <b>${total}</b> pagos</p>
+          <div class="flex items-center gap-1 flex-wrap">
+            <button class="btn btn-secondary btn-sm" data-page="${st.page - 1}" ${st.page === 1 ? 'disabled' : ''}><i class="fa-solid fa-chevron-left"></i> Anterior</button>
+            ${nums.map(n => n === '…'
+              ? '<span class="px-1 text-slate-400">…</span>'
+              : `<button class="btn ${n === st.page ? 'btn-primary' : 'btn-secondary'} btn-sm" data-page="${n}">${n}</button>`).join('')}
+            <button class="btn btn-secondary btn-sm" data-page="${st.page + 1}" ${st.page === paginas ? 'disabled' : ''}>Siguiente <i class="fa-solid fa-chevron-right"></i></button>
+          </div>
+        </div>` : '';
+
+      return `
+        <!-- Pestañas de Estado (los contadores respetan los filtros) -->
+        <div class="tabs">
+          <button class="tab ${st.tab === 'Pendiente' ? 'active' : ''}" data-tab="Pendiente">
+            <i class="fa-solid fa-clock"></i> Pendientes de Revisión <span class="count">${cuenta('Pendiente')}</span>
+          </button>
+          <button class="tab ${st.tab === 'Aprobado' ? 'active' : ''}" data-tab="Aprobado">
+            <i class="fa-solid fa-circle-check"></i> Aprobados <span class="count">${cuenta('Aprobado')}</span>
+          </button>
+          <button class="tab ${st.tab === 'Rechazado' ? 'active' : ''}" data-tab="Rechazado">
+            <i class="fa-solid fa-circle-xmark"></i> Rechazados <span class="count">${cuenta('Rechazado')}</span>
+          </button>
+          <button class="tab ${st.tab === 'todos' ? 'active' : ''}" data-tab="todos">
+            Todos los Pagos <span class="count">${base.length}</span>
+          </button>
+        </div>
+
+        ${st.tab === 'Pendiente' && cuenta('Pendiente') > 0 ? `
+          <div class="alert alert-info">
+            <i class="fa-solid fa-circle-info ai"></i>
+            <div>
+              <b>Regla de Negocio:</b> Los pagos en estado <i>Pendiente</i> NO reducen la deuda del estudiante ni se computan como ingresos confirmados hasta que usted presione <b>Aprobar</b>.
+            </div>
+          </div>
+        ` : ''}
+
+        ${total > 0 ? `
+          <div class="flex flex-wrap items-center justify-between gap-2 text-sm text-slate-500">
+            <p><b class="text-slate-800">${total}</b> ${total === 1 ? 'pago' : 'pagos'}${PagosView.hayFiltros(st) ? ' con los filtros aplicados' : ''}
+              · Total <b class="text-slate-800">${fmt.money(montoTotal)}</b>
+              ${st.tab === 'todos' ? `· Aprobado <b class="text-emerald-600">${fmt.money(montoAprob)}</b>` : ''}</p>
+          </div>` : ''}
+
+        ${total === 0
+          ? UI.empty(PagosView.hayFiltros(st) ? 'No se encontraron pagos con los filtros aplicados.' : 'No hay pagos en esta categoría.',
+              PagosView.hayFiltros(st) ? 'fa-magnifying-glass' : 'fa-circle-check',
+              PagosView.hayFiltros(st) ? '<button class="btn btn-secondary btn-sm" data-limpiar-pagos><i class="fa-solid fa-eraser"></i> Limpiar filtros</button>' : '')
+          : UI.table({
+              cols: [
+                { label: 'Fecha Reporte' },
+                { label: 'Estudiante' },
+                { label: 'Concepto / Cuota' },
+                { label: 'Método' },
+                { label: 'N° Operación' },
+                { label: 'Comprobante' },
+                { label: 'Monto Abono', cls: 'num' },
+                { label: 'Estado' },
+                { label: 'Acciones de Verificación', cls: 'nowrap text-right' }
+              ],
+              rows: visibles.map(p => PagosView.fila(p))
+            })}
+
+        ${paginacion}
+      `;
+    },
+
     render(params) {
-      const tab = params.tab || 'Pendiente';
-      const pagos = db.all('pagos').slice().sort((a, b) => b.fechaReporte.localeCompare(a.fechaReporte));
-      const estudiantes = db.all('estudiantes');
-
-      const countPendientes = pagos.filter(p => p.estado === 'Pendiente').length;
-      const countAprobados = pagos.filter(p => p.estado === 'Aprobado').length;
-      const countRechazados = pagos.filter(p => p.estado === 'Rechazado').length;
-
-      const filtrados = pagos.filter(p => {
-        if (tab === 'todos') return true;
-        return p.estado === tab;
-      });
+      const st = PagosView.leer(params);
+      const metodos = ['Yape', 'Plin', 'Efectivo', 'Transferencia'];
 
       return `
         <div class="card space-y-5">
@@ -1380,98 +1685,85 @@
             </div>
           </div>
 
-          <!-- Pestañas de Estado -->
-          <div class="tabs">
-            <button class="tab ${tab === 'Pendiente' ? 'active' : ''}" data-tab="Pendiente">
-              <i class="fa-solid fa-clock"></i> Pendientes de Revisión <span class="count">${countPendientes}</span>
-            </button>
-            <button class="tab ${tab === 'Aprobado' ? 'active' : ''}" data-tab="Aprobado">
-              <i class="fa-solid fa-circle-check"></i> Aprobados <span class="count">${countAprobados}</span>
-            </button>
-            <button class="tab ${tab === 'Rechazado' ? 'active' : ''}" data-tab="Rechazado">
-              <i class="fa-solid fa-circle-xmark"></i> Rechazados <span class="count">${countRechazados}</span>
-            </button>
-            <button class="tab ${tab === 'todos' ? 'active' : ''}" data-tab="todos">
-              Todos los Pagos <span class="count">${pagos.length}</span>
-            </button>
+          <!-- Filtros -->
+          <div class="space-y-3">
+            <div class="grid grid-cols-1 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)] gap-3">
+              <div class="input-icon">
+                <i class="fa-solid fa-magnifying-glass"></i>
+                <input type="search" id="filtro-pag-q" class="input" autocomplete="off"
+                       placeholder="Buscar por estudiante, DNI, N° operación, concepto o recibo..." value="${fmt.esc(st.q)}">
+              </div>
+              <select id="filtro-pag-met" class="select" aria-label="Método de pago">
+                <option value="">Todos los métodos</option>
+                ${metodos.map(m => `<option value="${m}" ${st.metodo === m ? 'selected' : ''}>${m}</option>`).join('')}
+              </select>
+              <input type="date" id="filtro-pag-desde" class="input" title="Desde" aria-label="Fecha desde" value="${st.desde}">
+              <input type="date" id="filtro-pag-hasta" class="input" title="Hasta" aria-label="Fecha hasta" value="${st.hasta}">
+            </div>
+            <div class="flex flex-wrap items-center gap-2 text-xs">
+              <span class="text-slate-500 font-semibold">Fecha:</span>
+              <button type="button" class="btn btn-secondary btn-sm" data-rango="hoy">Hoy</button>
+              <button type="button" class="btn btn-secondary btn-sm" data-rango="7d">Últimos 7 días</button>
+              <button type="button" class="btn btn-secondary btn-sm" data-rango="mes">Este mes</button>
+              <button type="button" class="btn btn-soft-danger btn-sm" id="btn-limpiar-pagos" data-limpiar-pagos ${PagosView.hayFiltros(st) ? '' : 'hidden'}>
+                <i class="fa-solid fa-eraser"></i> Limpiar filtros
+              </button>
+            </div>
           </div>
 
-          ${tab === 'Pendiente' && countPendientes > 0 ? `
-            <div class="alert alert-info">
-              <i class="fa-solid fa-circle-info ai"></i>
-              <div>
-                <b>Regla de Negocio:</b> Los pagos en estado <i>Pendiente</i> NO reducen la deuda del estudiante ni se computan como ingresos confirmados hasta que usted presione <b>Aprobar</b>.
-              </div>
-            </div>
-          ` : ''}
-
-          <!-- Tabla de Pagos -->
-          ${filtrados.length === 0 ? UI.empty('No hay pagos en esta categoría.', 'fa-circle-check') : UI.table({
-            cols: [
-              { label: 'Fecha Reporte' },
-              { label: 'Estudiante' },
-              { label: 'Concepto / Cuota' },
-              { label: 'Método' },
-              { label: 'N° Operación' },
-              { label: 'Comprobante' },
-              { label: 'Monto Abono', cls: 'num' },
-              { label: 'Estado' },
-              { label: 'Acciones de Verificación', cls: 'nowrap text-right' }
-            ],
-            rows: filtrados.map(p => {
-              const est = db.find('estudiantes', p.estudianteId);
-              const pen = db.find('pensiones', p.pensionId);
-              const isPend = p.estado === 'Pendiente';
-
-              return [
-                `<div>
-                  <span class="text-xs font-bold text-slate-800">${fmt.date(p.fechaPago)}</span>
-                  <p class="text-[11px] text-slate-400">${fmt.timeAgo(p.fechaReporte)}</p>
-                </div>`,
-                `<div>
-                  <a href="#estudiantes?id=${p.estudianteId}" class="font-bold text-slate-800 hover:text-brand">${fmt.esc(est ? `${est.nombres} ${est.apellidos}` : '—')}</a>
-                  <p class="text-xs text-slate-400">DNI ${est?.dni || '—'}</p>
-                </div>`,
-                `<span class="font-semibold text-slate-700">${fmt.esc(pen?.concepto || 'Cuota')}</span>`,
-                UI.method(p.metodo),
-                `<code class="text-xs bg-slate-100 px-2 py-1 rounded font-bold">${fmt.esc(p.numeroOperacion)}</code>`,
-                p.comprobante ? `
-                  <button class="flex items-center gap-2 text-xs font-semibold text-brand hover:underline" data-view-voucher="${p.id}">
-                    <img src="${p.comprobante}" class="w-8 h-8 rounded object-cover border" alt="Voucher">
-                    <span>Ver voucher</span>
-                  </button>
-                ` : '<span class="text-xs text-slate-400">Sin voucher (Efectivo)</span>',
-                `<span class="font-extrabold text-base ${p.estado === 'Aprobado' ? 'text-emerald-600' : 'text-slate-900'}">${fmt.money(p.monto)}</span>`,
-                `<div>
-                  ${UI.badge(p.estado)}
-                  ${p.motivoRechazo ? `<p class="text-[11px] text-red-500 mt-1 max-w-[160px] truncate" title="${fmt.esc(p.motivoRechazo)}">${fmt.esc(p.motivoRechazo)}</p>` : ''}
-                </div>`,
-                `<div class="actions">
-                  ${isPend ? `
-                    <button class="btn btn-success btn-sm" data-approve="${p.id}">
-                      <i class="fa-solid fa-check"></i> Aprobar
-                    </button>
-                    <button class="btn btn-danger btn-sm" data-reject="${p.id}">
-                      <i class="fa-solid fa-xmark"></i> Rechazar
-                    </button>
-                  ` : ''}
-                  ${p.estado === 'Aprobado' ? `
-                    <button class="btn btn-secondary btn-sm" data-print-recibo="${p.id}">
-                      <i class="fa-solid fa-print"></i> Recibo ${p.reciboNumero || ''}
-                    </button>
-                  ` : ''}
-                </div>`
-              ];
-            })
-          })}
+          <div id="pagos-resultado" class="space-y-5">${PagosView.resultado(st)}</div>
         </div>
       `;
     },
     mount(params, root) {
-      root.querySelectorAll('.tab').forEach(t => {
-        t.addEventListener('click', () => {
-          Shell.go('pagos', { tab: t.dataset.tab });
-        });
+      const st = PagosView.leer(params);
+      const q = document.getElementById('filtro-pag-q');
+      const met = document.getElementById('filtro-pag-met');
+      const desde = document.getElementById('filtro-pag-desde');
+      const hasta = document.getElementById('filtro-pag-hasta');
+      const btnLimpiar = document.getElementById('btn-limpiar-pagos');
+
+      // Repinta solo el bloque de resultados (el cuadro de búsqueda conserva el foco)
+      const pintar = (irArriba = false) => {
+        document.getElementById('pagos-resultado').innerHTML = PagosView.resultado(st);
+        btnLimpiar.hidden = !PagosView.hayFiltros(st);
+        PagosView.guardarUrl(st);
+        if (irArriba) {
+          const y = document.getElementById('pagos-resultado').getBoundingClientRect().top + window.scrollY - 90;
+          window.scrollTo({ top: Math.max(0, y) });
+        }
+      };
+      const leerControles = () => {
+        st.q = q.value.trim();
+        st.metodo = met.value;
+        st.desde = desde.value;
+        st.hasta = hasta.value;
+        if (st.desde && st.hasta && st.desde > st.hasta) { [st.desde, st.hasta] = [st.hasta, st.desde]; desde.value = st.desde; hasta.value = st.hasta; }
+        st.page = 1;
+        pintar();
+      };
+
+      q.addEventListener('input', fmt.debounce(leerControles, 250));
+      [met, desde, hasta].forEach(el => el.addEventListener('change', leerControles));
+
+      root.addEventListener('click', e => {
+        const tab = e.target.closest('[data-tab]');
+        if (tab) { st.tab = tab.dataset.tab; st.page = 1; pintar(); return; }
+        const pag = e.target.closest('[data-page]');
+        if (pag && !pag.disabled) { st.page = parseInt(pag.dataset.page, 10) || 1; pintar(true); return; }
+        const rango = e.target.closest('[data-rango]');
+        if (rango) {
+          const hoy = fmt.today();
+          if (rango.dataset.rango === 'hoy') { desde.value = hoy; hasta.value = hoy; }
+          else if (rango.dataset.rango === '7d') { desde.value = fmt.addDays(hoy, -6); hasta.value = hoy; }
+          else { desde.value = hoy.slice(0, 8) + '01'; hasta.value = hoy; }
+          leerControles();
+          return;
+        }
+        if (e.target.closest('[data-limpiar-pagos]')) {
+          q.value = ''; met.value = ''; desde.value = ''; hasta.value = '';
+          leerControles();
+        }
       });
 
       document.getElementById('btn-pago-efectivo')?.addEventListener('click', () => PagosView.modalPagoEfectivo());
@@ -1510,10 +1802,7 @@
         <form id="form-pago-efectivo" class="space-y-4">
           <div class="field">
             <label class="label">Estudiante <span class="text-red-500">*</span></label>
-            <select name="estudianteId" id="ef-estudiante" class="select" required>
-              <option value="">Seleccione estudiante...</option>
-              ${estudiantes.map(e => `<option value="${e.id}">${fmt.esc(e.nombres)} ${fmt.esc(e.apellidos)} (DNI: ${e.dni})</option>`).join('')}
-            </select>
+            ${Buscador.html({ id: 'ef-estudiante' })}
           </div>
 
           <div class="field">
@@ -2009,10 +2298,7 @@
             </div>
             <div class="field" id="wrap-estudiante">
               <label class="label">Vincular a Estudiante</label>
-              <select name="estudianteId" class="select">
-                <option value="">Sin vinculación...</option>
-                ${estudiantes.map(e => `<option value="${e.id}">${fmt.esc(e.nombres)} ${fmt.esc(e.apellidos)} (DNI: ${e.dni})</option>`).join('')}
-              </select>
+              ${Buscador.html({ requerido: false })}
             </div>
           </div>
 

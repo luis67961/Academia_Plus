@@ -438,3 +438,21 @@ body.modal-open { overflow: hidden; }
   .print-body { padding: 0; }
   .receipt { border: 1px solid #ddd; }
 }
+
+
+/* ================= BUSCADOR DE ESTUDIANTES (autocompletar) ================= */
+.est-picker { position: relative; }
+.est-picker-list {
+  position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 70; max-height: 280px; overflow-y: auto;
+  background: #fff; border: 1px solid #D1D5DB; border-radius: 10px; box-shadow: 0 12px 28px -8px rgba(17, 24, 39, .28); padding: .3rem;
+}
+.est-picker-list[hidden] { display: none; }
+.est-picker-item { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .55rem .7rem; border-radius: 8px; cursor: pointer; }
+.est-picker-item.active, .est-picker-item:hover { background: #EFF4FF; }
+.est-picker-name { font-weight: 600; font-size: .88rem; color: var(--pt-text); }
+.est-picker-dni { font-size: .78rem; color: var(--pt-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.est-picker-more, .est-picker-empty { padding: .55rem .7rem; font-size: .78rem; color: var(--pt-muted); }
+
+/* En filtros de tabla la lista puede ser más ancha que el cuadro (nombres largos) */
+.est-picker[data-filtro] .est-picker-list { right: auto; min-width: min(440px, 90vw); }
+.btn[hidden] { display: none !important; }
