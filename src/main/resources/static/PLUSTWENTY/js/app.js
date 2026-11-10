@@ -501,6 +501,73 @@
           return `<tr ${Array.isArray(r) ? '' : (r.attrs || '')}>${cells.map((cell, i) => `<td data-label="${esc(strip(cols[i]?.label || ''))}" class="${cols[i]?.cls || ''}">${cell}</td>`).join('')}</tr>`;
         }).join('')}</tbody>${foot}</table></div>`;
     },
+    /** Combobox con búsqueda: reemplaza a un <select> largo (p. ej. elegir estudiante).
+        El valor viaja en un <input type="hidden" name="..."> para que FormData siga igual.
+        options: [{ value, label, search? }]. Tras inyectar el HTML llamar a UI.initSearchSelect(). */
+    searchSelect({ name, id = '', options = [], value = '', placeholder = 'Buscar...', required = false }) {
+      const sel = options.find(o => String(o.value) === String(value));
+      const items = options.map(o =>
+        `<li class="ss-item" role="option" data-value="${esc(o.value)}" data-search="${esc(norm((o.label || '') + ' ' + (o.search || '')))}">${esc(o.label)}</li>`
+      ).join('');
+      return `<div class="ss" data-ss${required ? ' data-required' : ''}>
+        <input type="hidden" name="${esc(name)}"${id ? ` id="${esc(id)}"` : ''} value="${esc(value)}">
+        <div class="ss-field">
+          <i class="fa-solid fa-magnifying-glass ss-ico"></i>
+          <input type="text" class="input ss-input" autocomplete="off" role="combobox" aria-expanded="false" aria-autocomplete="list" placeholder="${esc(placeholder)}" value="${sel ? esc(sel.label) : ''}">
+          <i class="fa-solid fa-chevron-down ss-caret"></i>
+        </div>
+        <ul class="ss-menu" role="listbox" hidden>${items}</ul>
+      </div>`;
+    },
+    initSearchSelect(scope) {
+      (scope || document).querySelectorAll('[data-ss]').forEach(ss => {
+        if (ss.dataset.ready) return;
+        ss.dataset.ready = '1';
+        const hidden = ss.querySelector('input[type=hidden]');
+        const input = ss.querySelector('.ss-input');
+        const menu = ss.querySelector('.ss-menu');
+        const itemsAll = () => Array.from(menu.querySelectorAll('.ss-item'));
+        const open = () => { menu.hidden = false; ss.classList.add('open'); input.setAttribute('aria-expanded', 'true'); };
+        const close = () => { menu.hidden = true; ss.classList.remove('open'); input.setAttribute('aria-expanded', 'false'); };
+        const clearActive = () => itemsAll().forEach(i => i.classList.remove('active'));
+        const labelOf = v => { const o = itemsAll().find(i => i.dataset.value === v); return o ? o.textContent : ''; };
+        const showAll = () => { itemsAll().forEach(i => { i.hidden = false; }); const e = menu.querySelector('.ss-empty'); if (e) e.remove(); };
+        const filter = () => {
+          const q = norm(input.value.trim());
+          let shown = 0;
+          itemsAll().forEach(i => { const m = !q || i.dataset.search.indexOf(q) !== -1; i.hidden = !m; if (m) shown++; });
+          let empty = menu.querySelector('.ss-empty');
+          if (!shown && !empty) { empty = document.createElement('li'); empty.className = 'ss-empty'; empty.textContent = 'Sin resultados'; menu.appendChild(empty); }
+          else if (shown && empty) empty.remove();
+          clearActive(); const first = itemsAll().find(i => !i.hidden); if (first) first.classList.add('active');
+        };
+        const commit = li => {
+          hidden.value = li.dataset.value;
+          input.value = li.textContent;
+          input.classList.remove('invalid');
+          close();
+          hidden.dispatchEvent(new Event('change', { bubbles: true }));
+        };
+        input.addEventListener('focus', () => { open(); showAll(); });
+        input.addEventListener('input', () => { hidden.value = ''; open(); filter(); });
+        input.addEventListener('keydown', e => {
+          if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+            e.preventDefault();
+            if (menu.hidden) { open(); showAll(); }
+            const vis = itemsAll().filter(i => !i.hidden);
+            if (!vis.length) return;
+            let idx = vis.findIndex(i => i.classList.contains('active'));
+            idx = e.key === 'ArrowDown' ? Math.min(vis.length - 1, idx + 1) : Math.max(0, idx - 1);
+            clearActive(); vis[idx].classList.add('active'); vis[idx].scrollIntoView({ block: 'nearest' });
+          } else if (e.key === 'Enter') {
+            const a = itemsAll().find(i => i.classList.contains('active') && !i.hidden);
+            if (a) { e.preventDefault(); commit(a); }
+          } else if (e.key === 'Escape') { close(); input.value = labelOf(hidden.value); }
+        });
+        menu.addEventListener('mousedown', e => { const li = e.target.closest('.ss-item'); if (li) { e.preventDefault(); commit(li); } });
+        input.addEventListener('blur', () => { setTimeout(() => { if (!ss.contains(document.activeElement)) { close(); input.value = labelOf(hidden.value); } }, 120); });
+      });
+    },
     progress(pct) { const p = Math.max(0, Math.min(100, Math.round(pct || 0))); return `<div class="progress"><span style="width:${p}%"></span></div>`; },
     /** Convierte una imagen a base64 comprimida para reducir el tamaño de la subida. */
     fileToDataURL(file, maxW = 1000, quality = 0.72) {
@@ -659,12 +726,26 @@
       const s = document.getElementById('page-subtitle'); if (s) s.textContent = v.subtitle || '';
       document.title = `${v.title} · PLUSTWENTY`;
       const root = document.getElementById('view-root');
+      // Preservar foco y cursor del campo de filtro activo: al re-renderizar con
+      // innerHTML el input se recrea y, sin esto, el buscador pierde el foco en
+      // cada tecla durante el filtrado en vivo.
+      const ae = document.activeElement;
+      const focusId = (ae && root && root.contains(ae) && ae.id) ? ae.id : null;
+      let selStart = null, selEnd = null;
+      if (focusId) { try { selStart = ae.selectionStart; selEnd = ae.selectionEnd; } catch (_) {} }
       try {
         root.innerHTML = `<div class="view-enter">${v.render(params)}</div>`;
         v.mount && v.mount(params, root);
       } catch (err) {
         console.error(err);
         root.innerHTML = UI.empty('Ocurrió un error al cargar esta sección.', 'fa-bug');
+      }
+      if (focusId) {
+        const again = document.getElementById(focusId);
+        if (again) {
+          again.focus();
+          if (selStart !== null) { try { again.setSelectionRange(selStart, selEnd); } catch (_) {} }
+        }
       }
       this.closeSidebar();
       window.scrollTo(0, 0);

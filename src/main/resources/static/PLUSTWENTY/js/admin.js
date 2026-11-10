@@ -657,6 +657,7 @@
         body: html,
         size: 'md'
       });
+      UI.initSearchSelect();
 
       const selPrg = document.getElementById('mat-modal-prg');
       const selCic = document.getElementById('mat-modal-cic');
@@ -687,7 +688,8 @@
 
         const ciclo = db.find('ciclos', cicloId);
         const est = db.find('estudiantes', estId);
-        if (!ciclo || !est) return;
+        if (!est) return UI.toast('Seleccione un estudiante de la lista');
+        if (!ciclo) return UI.toast('Seleccione el programa y el ciclo');
 
         // Una sola llamada: el servidor crea la matrícula + cronograma, actualiza al estudiante,
         // notifica y audita en una transacción (antes eran ~6 llamadas en fila).
@@ -1346,6 +1348,7 @@
         body: html,
         size: 'md'
       });
+      UI.initSearchSelect();
 
       document.getElementById('form-nueva-obl').addEventListener('submit', e => {
         e.preventDefault();
@@ -1353,6 +1356,7 @@
         const estId = fd.get('estudianteId');
         const cicloId = fd.get('cicloId');
         const est = db.find('estudiantes', estId);
+        if (!est) return UI.toast('Seleccione un estudiante de la lista');
 
         const nueva = db.insert('pensiones', {
           matriculaId: null,
@@ -1837,6 +1841,7 @@
         body: html,
         size: 'md'
       });
+      UI.initSearchSelect();
 
       const selE = document.getElementById('ef-estudiante');
       const selP = document.getElementById('ef-pension');
@@ -1869,7 +1874,8 @@
 
         const est = db.find('estudiantes', estId);
         const pen = db.find('pensiones', pensionId);
-        if (!est || !pen) return;
+        if (!est) return UI.toast('Seleccione un estudiante de la lista');
+        if (!pen) return UI.toast('Seleccione la pensión u obligación a pagar');
 
         // Una sola llamada: el servidor registra el pago aprobado, emite recibo, notifica y audita.
         const saved = window.PT.revisionPagos.registrarCaja({
@@ -2209,8 +2215,19 @@
   const UsuariosView = {
     title: 'Gestión de Usuarios y Roles',
     subtitle: 'Administración de accesos, roles de sistema y reseteo de claves',
-    render() {
+    render(params = {}) {
       const users = db.all('users');
+      const busqueda = (params.q || '').toLowerCase();
+      const rolFiltro = params.rol || '';
+
+      const filtrados = users.filter(u => {
+        if (rolFiltro && u.rol !== rolFiltro) return false;
+        if (busqueda) {
+          const t = `${u.username || ''} ${u.nombre || ''} ${u.email || ''}`.toLowerCase();
+          if (!t.includes(busqueda)) return false;
+        }
+        return true;
+      });
 
       return `
         <div class="card space-y-4">
@@ -2226,7 +2243,20 @@
             </div>
           </div>
 
-          ${UI.table({
+          <!-- Filtros -->
+          <div class="filters" style="--fcols:2">
+            <div class="input-icon">
+              <i class="fa-solid fa-magnifying-glass"></i>
+              <input type="search" id="filtro-usr-q" class="input" placeholder="Buscar por usuario, nombre o correo..." value="${fmt.esc(params.q || '')}">
+            </div>
+            <select id="filtro-usr-rol" class="select">
+              <option value="">Todos los roles</option>
+              <option value="admin" ${rolFiltro === 'admin' ? 'selected' : ''}>Administradores</option>
+              <option value="user" ${rolFiltro === 'user' ? 'selected' : ''}>Estudiantes / Apoderados</option>
+            </select>
+          </div>
+
+          ${filtrados.length === 0 ? UI.empty('No se encontraron cuentas con los filtros aplicados.') : UI.table({
             cols: [
               { label: 'Usuario / Login' },
               { label: 'Nombre Completo' },
@@ -2236,7 +2266,7 @@
               { label: 'Estado' },
               { label: 'Acciones', cls: 'nowrap text-right' }
             ],
-            rows: users.map(u => {
+            rows: filtrados.map(u => {
               const est = u.estudianteId ? db.find('estudiantes', u.estudianteId) : null;
               const isMe = u.id === admin.id;
 
@@ -2262,6 +2292,15 @@
       `;
     },
     mount(params, root) {
+      const applyFilters = () => {
+        Shell.go('usuarios', {
+          q: document.getElementById('filtro-usr-q').value.trim(),
+          rol: document.getElementById('filtro-usr-rol').value
+        });
+      };
+      document.getElementById('filtro-usr-q')?.addEventListener('input', fmt.debounce(applyFilters, 300));
+      document.getElementById('filtro-usr-rol')?.addEventListener('change', applyFilters);
+
       document.getElementById('btn-nuevo-usuario')?.addEventListener('click', () => UsuariosView.modalCrear());
 
       root.addEventListener('click', async e => {
@@ -2337,6 +2376,7 @@
         body: html,
         size: 'md'
       });
+      UI.initSearchSelect();
 
       document.getElementById('form-nuevo-user').addEventListener('submit', e => {
         e.preventDefault();

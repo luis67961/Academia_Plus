@@ -202,6 +202,19 @@ body.modal-open { overflow: hidden; }
 }
 .textarea { resize: vertical; min-height: 80px; }
 .input.invalid, .select.invalid { border-color: var(--pt-red); box-shadow: 0 0 0 3px rgba(220, 38, 38, .12); }
+
+/* Buscador desplegable (combobox) para listas largas (p. ej. estudiante) */
+.ss { position: relative; }
+.ss-field { position: relative; }
+.ss-ico { position: absolute; left: .9rem; top: 50%; transform: translateY(-50%); color: #9CA3AF; font-size: .88rem; pointer-events: none; }
+.ss-caret { position: absolute; right: .9rem; top: 50%; transform: translateY(-50%); color: #9CA3AF; font-size: .75rem; pointer-events: none; transition: transform .15s; }
+.ss.open .ss-caret { transform: translateY(-50%) rotate(180deg); }
+.ss-input { padding-left: 2.5rem; padding-right: 2.2rem; }
+.ss-menu { position: absolute; z-index: 50; left: 0; right: 0; top: calc(100% + 4px); max-height: 244px; overflow-y: auto; background: #fff; border: 1px solid var(--pt-border); border-radius: var(--pt-radius); box-shadow: var(--pt-shadow-md); padding: .3rem; }
+.ss-item { padding: .5rem .65rem; border-radius: 8px; font-size: .88rem; color: var(--pt-text); cursor: pointer; line-height: 1.3; }
+.ss-item:hover, .ss-item.active { background: rgba(37, 99, 235, .1); color: var(--pt-blue-hover); }
+.ss-item[hidden] { display: none; }
+.ss-empty { padding: .6rem .65rem; font-size: .82rem; color: var(--pt-muted); }
 .hint { font-size: .74rem; color: var(--pt-muted); }
 .check { display: flex; align-items: center; gap: .6rem; font-size: .87rem; color: #374151; cursor: pointer; }
 .check input { width: 18px; height: 18px; accent-color: var(--pt-blue); flex-shrink: 0; }
