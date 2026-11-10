@@ -500,7 +500,7 @@
             ${Buscador.html({ tipo: 'programa', name: 'prg', id: 'filtro-mat-prg', filtro: true, valor: prgFiltro, placeholder: 'Todos los programas (escriba nombre o siglas)' })}
             <select id="filtro-mat-cic" class="select">
               <option value="">Todos los ciclos</option>
-              ${ciclos.map(c => `<option value="${c.id}" ${cicFiltro === c.id ? 'selected' : ''}>${fmt.esc(c.nombre)}</option>`).join('')}
+              ${ciclos.map(c => { const pr = db.find('programas', c.programaId); return `<option value="${c.id}" ${cicFiltro === c.id ? 'selected' : ''}>${fmt.esc((pr ? (pr.siglas || pr.nombre) + ' · ' : '') + c.nombre)}</option>`; }).join('')}
             </select>
             <select id="filtro-mat-est" class="select">
               <option value="">Todos los estados</option>
@@ -905,6 +905,10 @@
       const programas = db.all('programas').filter(p => p.activo);
       const ciclos = db.all('ciclos').filter(c => c.activo);
 
+      // Límites de fecha de nacimiento: entre hace 100 y hace 10 años (ni hoy ni futura).
+      const fechaHace = anios => { const d = new Date(); d.setFullYear(d.getFullYear() - anios); return fmt.toISO(d); };
+      const maxNac = fechaHace(10), minNac = fechaHace(100);
+
       const html = `
         <form id="form-estudiante" class="space-y-4">
           <div class="section-label">Datos Personales del Estudiante</div>
@@ -931,8 +935,8 @@
               <input type="text" name="apellidos" class="input" value="${fmt.esc(est?.apellidos || '')}" ${esEdicion ? 'readonly tabindex="-1"' : 'required'} placeholder="Ej: Quispe Huamán">
             </div>
             <div class="field">
-              <label class="label">Fecha de Nacimiento ${esEdicion ? '<span class="text-xs text-slate-400 font-normal">(No editable)</span>' : ''}</label>
-              <input type="date" name="fechaNacimiento" class="input" value="${est?.fechaNacimiento || '2008-01-01'}" ${esEdicion ? 'readonly tabindex="-1" style="pointer-events: none;"' : ''}>
+              <label class="label">Fecha de Nacimiento ${esEdicion ? '<span class="text-xs text-slate-400 font-normal">(No editable)</span>' : '<span class="text-red-500">*</span>'}</label>
+              <input type="date" name="fechaNacimiento" class="input" value="${est?.fechaNacimiento || '2008-01-01'}" min="${minNac}" max="${maxNac}" ${esEdicion ? 'readonly tabindex="-1" style="pointer-events: none;"' : 'required'}>
             </div>
           </div>
 
@@ -1042,7 +1046,19 @@
         };
 
         if (!validators.phone(data.telefono) || !validators.phone(data.apoderado.telefono)) {
-          return UI.alert('Teléfono inválido', 'El teléfono debe tener exactamente 9 dígitos numéricos.', 'error');
+          return UI.alert('Teléfono inválido', 'El teléfono debe tener 9 dígitos y empezar con 9 (celular peruano).', 'error');
+        }
+
+        if (!validators.email(data.email)) {
+          return UI.alert('Correo inválido', 'Ingresa un correo electrónico válido (debe incluir @ y un dominio, ej. nombre@gmail.com).', 'error');
+        }
+
+        if (data.apoderado.dni && !validators.dni(data.apoderado.dni)) {
+          return UI.alert('DNI del apoderado inválido', 'El DNI del apoderado debe tener exactamente 8 dígitos numéricos.', 'error');
+        }
+
+        if (!esEdicion && !validators.birthdate(data.fechaNacimiento)) {
+          return UI.alert('Fecha de nacimiento inválida', 'La fecha no puede ser de hoy ni futura, y el estudiante debe tener entre 10 y 100 años.', 'error');
         }
 
         if (esEdicion) {
@@ -1211,7 +1227,7 @@
             </div>
             <select id="filtro-pen-cic" class="select">
               <option value="">Todos los ciclos</option>
-              ${ciclos.map(c => `<option value="${c.id}" ${cicFiltro === c.id ? 'selected' : ''}>${fmt.esc(c.nombre)}</option>`).join('')}
+              ${ciclos.map(c => { const pr = db.find('programas', c.programaId); return `<option value="${c.id}" ${cicFiltro === c.id ? 'selected' : ''}>${fmt.esc((pr ? (pr.siglas || pr.nombre) + ' · ' : '') + c.nombre)}</option>`; }).join('')}
             </select>
             <select id="filtro-pen-est" class="select">
               <option value="">Todos los estados</option>
@@ -1304,7 +1320,7 @@
             <div class="field">
               <label class="label">Ciclo Asociado</label>
               <select name="cicloId" class="select" required>
-                ${ciclos.map(c => `<option value="${c.id}">${fmt.esc(c.nombre)}</option>`).join('')}
+                ${ciclos.map(c => { const pr = db.find('programas', c.programaId); return `<option value="${c.id}">${fmt.esc((pr ? (pr.siglas || pr.nombre) + ' · ' : '') + c.nombre)}</option>`; }).join('')}
               </select>
             </div>
             <div class="field">
