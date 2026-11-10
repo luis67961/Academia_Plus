@@ -463,10 +463,7 @@
         <form id="form-nueva-mat" class="space-y-4">
           <div class="field">
             <label class="label">Estudiante <span class="text-red-500">*</span></label>
-            <select name="estudianteId" class="select" required>
-              <option value="">Seleccione estudiante...</option>
-              ${estudiantes.map(e => `<option value="${e.id}">${fmt.esc(e.nombres)} ${fmt.esc(e.apellidos)} (DNI: ${e.dni})</option>`).join('')}
-            </select>
+            ${UI.searchSelect({ name: 'estudianteId', options: estudiantes.map(e => ({ value: e.id, label: `${e.nombres} ${e.apellidos} (DNI: ${e.dni})`, search: `${e.nombres} ${e.apellidos} ${e.dni}` })), placeholder: 'Buscar por nombre o DNI...', required: true })}
           </div>
 
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -515,6 +512,7 @@
         body: html,
         size: 'md'
       });
+      UI.initSearchSelect();
 
       const selPrg = document.getElementById('mat-modal-prg');
       const selCic = document.getElementById('mat-modal-cic');
@@ -545,7 +543,8 @@
 
         const ciclo = db.find('ciclos', cicloId);
         const est = db.find('estudiantes', estId);
-        if (!ciclo || !est) return;
+        if (!est) return UI.toast('Seleccione un estudiante de la lista');
+        if (!ciclo) return UI.toast('Seleccione el programa y el ciclo');
 
         // Una sola llamada: el servidor crea la matrícula + cronograma, actualiza al estudiante,
         // notifica y audita en una transacción (antes eran ~6 llamadas en fila).
@@ -1156,10 +1155,7 @@
         <form id="form-nueva-obl" class="space-y-4">
           <div class="field">
             <label class="label">Estudiante <span class="text-red-500">*</span></label>
-            <select name="estudianteId" class="select" required>
-              <option value="">Seleccione estudiante...</option>
-              ${estudiantes.map(e => `<option value="${e.id}">${fmt.esc(e.nombres)} ${fmt.esc(e.apellidos)} (DNI: ${e.dni})</option>`).join('')}
-            </select>
+            ${UI.searchSelect({ name: 'estudianteId', options: estudiantes.map(e => ({ value: e.id, label: `${e.nombres} ${e.apellidos} (DNI: ${e.dni})`, search: `${e.nombres} ${e.apellidos} ${e.dni}` })), placeholder: 'Buscar por nombre o DNI...', required: true })}
           </div>
 
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1210,6 +1206,7 @@
         body: html,
         size: 'md'
       });
+      UI.initSearchSelect();
 
       document.getElementById('form-nueva-obl').addEventListener('submit', e => {
         e.preventDefault();
@@ -1217,6 +1214,7 @@
         const estId = fd.get('estudianteId');
         const cicloId = fd.get('cicloId');
         const est = db.find('estudiantes', estId);
+        if (!est) return UI.toast('Seleccione un estudiante de la lista');
 
         const nueva = db.insert('pensiones', {
           matriculaId: null,
@@ -1354,6 +1352,7 @@
     subtitle: 'Auditoría y conciliación de pagos reportados vía Yape, Plin y registro en efectivo',
     render(params) {
       const tab = params.tab || 'Pendiente';
+      const busqueda = (params.q || '').toLowerCase();
       const pagos = db.all('pagos').slice().sort((a, b) => b.fechaReporte.localeCompare(a.fechaReporte));
       const estudiantes = db.all('estudiantes');
 
@@ -1362,8 +1361,14 @@
       const countRechazados = pagos.filter(p => p.estado === 'Rechazado').length;
 
       const filtrados = pagos.filter(p => {
-        if (tab === 'todos') return true;
-        return p.estado === tab;
+        if (tab !== 'todos' && p.estado !== tab) return false;
+        if (busqueda) {
+          const est = estudiantes.find(e => e.id === p.estudianteId);
+          const pen = db.find('pensiones', p.pensionId);
+          const t = `${est?.nombres || ''} ${est?.apellidos || ''} ${est?.dni || ''} ${p.numeroOperacion || ''} ${pen?.concepto || ''}`.toLowerCase();
+          if (!t.includes(busqueda)) return false;
+        }
+        return true;
       });
 
       return `
@@ -1394,6 +1399,14 @@
             <button class="tab ${tab === 'todos' ? 'active' : ''}" data-tab="todos">
               Todos los Pagos <span class="count">${pagos.length}</span>
             </button>
+          </div>
+
+          <!-- Buscador -->
+          <div class="filters" style="--fcols:1">
+            <div class="input-icon">
+              <i class="fa-solid fa-magnifying-glass"></i>
+              <input type="search" id="filtro-pag-q" class="input" placeholder="Buscar por estudiante, DNI, N° de operación o concepto..." value="${fmt.esc(params.q || '')}">
+            </div>
           </div>
 
           ${tab === 'Pendiente' && countPendientes > 0 ? `
@@ -1470,9 +1483,13 @@
     mount(params, root) {
       root.querySelectorAll('.tab').forEach(t => {
         t.addEventListener('click', () => {
-          Shell.go('pagos', { tab: t.dataset.tab });
+          Shell.go('pagos', { tab: t.dataset.tab, q: params.q || '' });
         });
       });
+
+      document.getElementById('filtro-pag-q')?.addEventListener('input', fmt.debounce(() => {
+        Shell.go('pagos', { tab: params.tab || 'Pendiente', q: document.getElementById('filtro-pag-q').value.trim() });
+      }, 300));
 
       document.getElementById('btn-pago-efectivo')?.addEventListener('click', () => PagosView.modalPagoEfectivo());
 
@@ -1510,10 +1527,7 @@
         <form id="form-pago-efectivo" class="space-y-4">
           <div class="field">
             <label class="label">Estudiante <span class="text-red-500">*</span></label>
-            <select name="estudianteId" id="ef-estudiante" class="select" required>
-              <option value="">Seleccione estudiante...</option>
-              ${estudiantes.map(e => `<option value="${e.id}">${fmt.esc(e.nombres)} ${fmt.esc(e.apellidos)} (DNI: ${e.dni})</option>`).join('')}
-            </select>
+            ${UI.searchSelect({ name: 'estudianteId', id: 'ef-estudiante', options: estudiantes.map(e => ({ value: e.id, label: `${e.nombres} ${e.apellidos} (DNI: ${e.dni})`, search: `${e.nombres} ${e.apellidos} ${e.dni}` })), placeholder: 'Buscar por nombre o DNI...', required: true })}
           </div>
 
           <div class="field">
@@ -1548,6 +1562,7 @@
         body: html,
         size: 'md'
       });
+      UI.initSearchSelect();
 
       const selE = document.getElementById('ef-estudiante');
       const selP = document.getElementById('ef-pension');
@@ -1580,7 +1595,8 @@
 
         const est = db.find('estudiantes', estId);
         const pen = db.find('pensiones', pensionId);
-        if (!est || !pen) return;
+        if (!est) return UI.toast('Seleccione un estudiante de la lista');
+        if (!pen) return UI.toast('Seleccione la pensión u obligación a pagar');
 
         // Una sola llamada: el servidor registra el pago aprobado, emite recibo, notifica y audita.
         const saved = window.PT.revisionPagos.registrarCaja({
@@ -1920,8 +1936,19 @@
   const UsuariosView = {
     title: 'Gestión de Usuarios y Roles',
     subtitle: 'Administración de accesos, roles de sistema y reseteo de claves',
-    render() {
+    render(params = {}) {
       const users = db.all('users');
+      const busqueda = (params.q || '').toLowerCase();
+      const rolFiltro = params.rol || '';
+
+      const filtrados = users.filter(u => {
+        if (rolFiltro && u.rol !== rolFiltro) return false;
+        if (busqueda) {
+          const t = `${u.username || ''} ${u.nombre || ''} ${u.email || ''}`.toLowerCase();
+          if (!t.includes(busqueda)) return false;
+        }
+        return true;
+      });
 
       return `
         <div class="card space-y-4">
@@ -1937,7 +1964,20 @@
             </div>
           </div>
 
-          ${UI.table({
+          <!-- Filtros -->
+          <div class="filters" style="--fcols:2">
+            <div class="input-icon">
+              <i class="fa-solid fa-magnifying-glass"></i>
+              <input type="search" id="filtro-usr-q" class="input" placeholder="Buscar por usuario, nombre o correo..." value="${fmt.esc(params.q || '')}">
+            </div>
+            <select id="filtro-usr-rol" class="select">
+              <option value="">Todos los roles</option>
+              <option value="admin" ${rolFiltro === 'admin' ? 'selected' : ''}>Administradores</option>
+              <option value="user" ${rolFiltro === 'user' ? 'selected' : ''}>Estudiantes / Apoderados</option>
+            </select>
+          </div>
+
+          ${filtrados.length === 0 ? UI.empty('No se encontraron cuentas con los filtros aplicados.') : UI.table({
             cols: [
               { label: 'Usuario / Login' },
               { label: 'Nombre Completo' },
@@ -1947,7 +1987,7 @@
               { label: 'Estado' },
               { label: 'Acciones', cls: 'nowrap text-right' }
             ],
-            rows: users.map(u => {
+            rows: filtrados.map(u => {
               const est = u.estudianteId ? db.find('estudiantes', u.estudianteId) : null;
               const isMe = u.id === admin.id;
 
@@ -1973,6 +2013,15 @@
       `;
     },
     mount(params, root) {
+      const applyFilters = () => {
+        Shell.go('usuarios', {
+          q: document.getElementById('filtro-usr-q').value.trim(),
+          rol: document.getElementById('filtro-usr-rol').value
+        });
+      };
+      document.getElementById('filtro-usr-q')?.addEventListener('input', fmt.debounce(applyFilters, 300));
+      document.getElementById('filtro-usr-rol')?.addEventListener('change', applyFilters);
+
       document.getElementById('btn-nuevo-usuario')?.addEventListener('click', () => UsuariosView.modalCrear());
 
       root.addEventListener('click', async e => {
@@ -2009,10 +2058,7 @@
             </div>
             <div class="field" id="wrap-estudiante">
               <label class="label">Vincular a Estudiante</label>
-              <select name="estudianteId" class="select">
-                <option value="">Sin vinculación...</option>
-                ${estudiantes.map(e => `<option value="${e.id}">${fmt.esc(e.nombres)} ${fmt.esc(e.apellidos)} (DNI: ${e.dni})</option>`).join('')}
-              </select>
+              ${UI.searchSelect({ name: 'estudianteId', options: estudiantes.map(e => ({ value: e.id, label: `${e.nombres} ${e.apellidos} (DNI: ${e.dni})`, search: `${e.nombres} ${e.apellidos} ${e.dni}` })), placeholder: 'Buscar por nombre o DNI (opcional)...' })}
             </div>
           </div>
 
@@ -2051,6 +2097,7 @@
         body: html,
         size: 'md'
       });
+      UI.initSearchSelect();
 
       document.getElementById('form-nuevo-user').addEventListener('submit', e => {
         e.preventDefault();
