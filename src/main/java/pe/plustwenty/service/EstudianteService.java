@@ -1,5 +1,7 @@
 package pe.plustwenty.service;
 
+import java.time.LocalDate;
+import java.time.Period;
 import java.util.regex.Pattern;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -18,7 +20,8 @@ import pe.plustwenty.repository.UsuarioRepository;
 public class EstudianteService {
 
     private static final Pattern RE_DNI = Pattern.compile("^\\d{8}$");
-    private static final Pattern RE_TELEFONO = Pattern.compile("^\\d{9}$");
+    private static final Pattern RE_TELEFONO = Pattern.compile("^9\\d{8}$");
+    private static final Pattern RE_EMAIL = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,}$");
 
     private final EstudianteRepository estudiantes;
     private final UsuarioRepository usuarios;
@@ -51,8 +54,20 @@ public class EstudianteService {
             throw new ApiException(409, "Ya existe una cuenta con el usuario " + dni + ".");
         }
         if (datos.telefono != null && !datos.telefono.isBlank() && !RE_TELEFONO.matcher(datos.telefono.trim()).matches()) {
-            throw new ApiException(400, "El teléfono debe tener exactamente 9 dígitos.");
+            throw new ApiException(400, "El teléfono debe tener 9 dígitos y empezar con 9.");
         }
+        if (datos.apoderado != null && datos.apoderado.telefono != null && !datos.apoderado.telefono.isBlank()
+                && !RE_TELEFONO.matcher(datos.apoderado.telefono.trim()).matches()) {
+            throw new ApiException(400, "El teléfono del apoderado debe tener 9 dígitos y empezar con 9.");
+        }
+        if (datos.apoderado != null && datos.apoderado.dni != null && !datos.apoderado.dni.isBlank()
+                && !RE_DNI.matcher(datos.apoderado.dni.trim()).matches()) {
+            throw new ApiException(400, "El DNI del apoderado debe tener exactamente 8 dígitos.");
+        }
+        if (datos.email != null && !datos.email.isBlank() && !RE_EMAIL.matcher(datos.email.trim()).matches()) {
+            throw new ApiException(400, "Indica un correo electrónico válido.");
+        }
+        validarFechaNacimiento(datos.fechaNacimiento);
 
         // Campos controlados por el servidor (el cliente no los decide).
         datos.id = eventos.nuevoId("est");
@@ -83,6 +98,27 @@ public class EstudianteService {
         eventos.auditar(admin, "Registró nuevo estudiante DNI " + dni + " (" + cuenta.nombre + ")",
                 "Gestión de Estudiantes", "");
         return datos;
+    }
+
+    /** Fecha de nacimiento: ni hoy ni futura, con edad entre 10 y 100 años. Opcional si viene vacía. */
+    private void validarFechaNacimiento(String fecha) {
+        if (fecha == null || fecha.isBlank()) {
+            return;
+        }
+        LocalDate nacimiento;
+        try {
+            nacimiento = LocalDate.parse(fecha.trim());
+        } catch (Exception ex) {
+            throw new ApiException(400, "La fecha de nacimiento no es válida.");
+        }
+        LocalDate hoy = LocalDate.now();
+        if (!nacimiento.isBefore(hoy)) {
+            throw new ApiException(400, "La fecha de nacimiento no puede ser hoy ni una fecha futura.");
+        }
+        int edad = Period.between(nacimiento, hoy).getYears();
+        if (edad < 10 || edad > 100) {
+            throw new ApiException(400, "La edad del estudiante debe estar entre 10 y 100 años.");
+        }
     }
 
     private String nz(String s) {

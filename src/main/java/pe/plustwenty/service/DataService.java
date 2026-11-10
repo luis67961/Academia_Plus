@@ -6,6 +6,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.Period;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -55,7 +57,8 @@ public class DataService {
 
     private static final Sort ORDEN = Sort.by("orden");
     private static final Pattern RE_DNI = Pattern.compile("^\\d{8}$");
-    private static final Pattern RE_TELEFONO = Pattern.compile("^\\d{9}$");
+    private static final Pattern RE_TELEFONO = Pattern.compile("^9\\d{8}$");
+    private static final Pattern RE_EMAIL = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,}$");
     private static final Pattern RE_OPERACION = Pattern.compile("^\\d{6}$");
     private static final Pattern RE_CAJA = Pattern.compile("^CAJA-\\d{5,}$");
     private static final String SIN_PERMISO = "No tiene permisos para realizar esta acción.";
@@ -379,11 +382,39 @@ public class DataService {
             throw new ApiException(400, "El DNI debe tener exactamente 8 dígitos.");
         }
         if (!esVacio(e.telefono) && !RE_TELEFONO.matcher(e.telefono.trim()).matches()) {
-            throw new ApiException(400, "El teléfono debe tener exactamente 9 dígitos numéricos.");
+            throw new ApiException(400, "El teléfono debe tener 9 dígitos y empezar con 9.");
         }
+        if (!esVacio(e.email) && !RE_EMAIL.matcher(e.email.trim()).matches()) {
+            throw new ApiException(400, "Indica un correo electrónico válido.");
+        }
+        validarFechaNacimiento(e.fechaNacimiento);
         Apoderado a = e.apoderado;
         if (a != null && !esVacio(a.telefono) && !RE_TELEFONO.matcher(a.telefono.trim()).matches()) {
-            throw new ApiException(400, "El teléfono del apoderado debe tener exactamente 9 dígitos numéricos.");
+            throw new ApiException(400, "El teléfono del apoderado debe tener 9 dígitos y empezar con 9.");
+        }
+        if (a != null && !esVacio(a.dni) && !RE_DNI.matcher(a.dni.trim()).matches()) {
+            throw new ApiException(400, "El DNI del apoderado debe tener exactamente 8 dígitos.");
+        }
+    }
+
+    /** Fecha de nacimiento: ni hoy ni futura, con edad entre 10 y 100 años. Opcional si viene vacía. */
+    private void validarFechaNacimiento(String fecha) {
+        if (esVacio(fecha)) {
+            return;
+        }
+        LocalDate nacimiento;
+        try {
+            nacimiento = LocalDate.parse(fecha.trim());
+        } catch (Exception ex) {
+            throw new ApiException(400, "La fecha de nacimiento no es válida.");
+        }
+        LocalDate hoy = LocalDate.now();
+        if (!nacimiento.isBefore(hoy)) {
+            throw new ApiException(400, "La fecha de nacimiento no puede ser hoy ni una fecha futura.");
+        }
+        int edad = Period.between(nacimiento, hoy).getYears();
+        if (edad < 10 || edad > 100) {
+            throw new ApiException(400, "La edad del estudiante debe estar entre 10 y 100 años.");
         }
     }
 
