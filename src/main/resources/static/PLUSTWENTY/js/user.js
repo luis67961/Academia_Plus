@@ -13,7 +13,7 @@
 (function () {
   'use strict';
 
-  const { db, finance, auth, UI, Shell, docs, fmt, validators, notificaciones } = window.PT;
+  const { db, finance, auth, UI, Shell, docs, fmt, validators, notificaciones, Pila, RULES } = window.PT;
   const user = auth.require('user');
   if (!user) return;
 
@@ -42,6 +42,8 @@
     subtitle: `Bienvenido(a), ${estudiante.nombres}`,
     render() {
       const res = finance.resumen(estudiante.id);
+      const hab = finance.habilitadas(estudiante.id, db.all('pagos'));
+      const irPagar = hab.primera ? `reportar?penId=${hab.primera.id}` : 'reportar';
       const prg = db.find('programas', estudiante.programaId);
       const cic = db.find('ciclos', estudiante.cicloId);
       const ultimasNotifs = notificaciones.list(0, 3);
@@ -81,7 +83,7 @@
                   <p class="text-xs text-red-700">Por favor regularice su pago a la brevedad para no perjudicar su acceso a simulacros y plataforma.</p>
                 </div>
               </div>
-              <button class="btn btn-danger btn-sm" data-go="reportar">Pagar Ahora</button>
+              <button class="btn btn-danger btn-sm" data-go="${irPagar}">Pagar Ahora</button>
             </div>
           ` : (res.proximo ? `
             <div class="alert alert-info flex items-center justify-between">
@@ -92,7 +94,7 @@
                   <p class="text-xs text-blue-700">Vence el ${fmt.date(res.proximo.fechaVencimiento)}.</p>
                 </div>
               </div>
-              <button class="btn btn-primary btn-sm" data-go="reportar?penId=${res.proximo.id}">Pagar Cuota</button>
+              <button class="btn btn-primary btn-sm" data-go="${irPagar}">Pagar Cuota</button>
             </div>
           ` : `
             <div class="alert alert-success">
@@ -229,6 +231,7 @@
     subtitle: 'Cronograma de pagos, fechas límite de vencimiento y abonos',
     render() {
       const res = finance.resumen(estudiante.id);
+      const habilitadas = finance.habilitadas(estudiante.id, db.all('pagos'));
 
       return `
         <div class="card space-y-5">
@@ -244,6 +247,11 @@
             </div>
           </div>
 
+          ${habilitadas.primera && res.pensiones.some(p => p.disponible > 0 && !habilitadas.ids.has(p.id)) ? `
+            <div class="alert alert-info text-sm">
+              <i class="fa-solid fa-list-ol ai"></i>
+              <div><b>Las cuotas se pagan en orden.</b> Ahora corresponde pagar <b>${fmt.esc(habilitadas.primera.concepto)}</b>; las siguientes se habilitan al cancelar la anterior.</div>
+            </div>` : ''}
           ${res.pensiones.length === 0 ? UI.empty('No se encontraron obligaciones registradas.') : UI.table({
             cols: [
               { label: 'Concepto de Pago' },
@@ -257,6 +265,8 @@
             ],
             rows: res.pensiones.map(p => {
               const hasSaldo = p.saldo > 0;
+              const puedePagar = p.disponible > 0 && habilitadas.ids.has(p.id);
+              const bloqueada = p.disponible > 0 && !habilitadas.ids.has(p.id);
               return [
                 `<div>
                   <span class="font-bold text-slate-800">${fmt.esc(p.concepto)}</span>
@@ -272,10 +282,17 @@
                 `<span class="font-extrabold ${p.saldo > 0 ? 'text-red-600' : 'text-slate-400'}">${fmt.money(p.saldo)}</span>`,
                 UI.badge(p.estado),
                 `<div class="actions">
-                  ${hasSaldo ? `
+                  ${puedePagar ? `
                     <button class="btn btn-primary btn-sm" data-pay-pen="${p.id}">
                       <i class="fa-solid fa-credit-card"></i> Pagar
                     </button>
+                  ` : bloqueada ? `
+                    <button class="btn btn-secondary btn-sm" disabled aria-disabled="true"
+                      title="Primero debe pagar la cuota más antigua: ${fmt.esc(habilitadas.primera ? habilitadas.primera.concepto : '')}">
+                      <i class="fa-solid fa-lock"></i> Pagar
+                    </button>
+                  ` : hasSaldo ? `
+                    <span class="text-xs text-blue-600 font-bold"><i class="fa-solid fa-hourglass-half"></i> En revisión</span>
                   ` : `
                     <span class="text-xs text-emerald-600 font-bold"><i class="fa-solid fa-check-double"></i> Cancelado</span>
                   `}
@@ -303,8 +320,21 @@
   const HistorialView = {
     title: 'Historial de Pagos',
     subtitle: 'Comprobantes reportados, estado de auditoría y recibos oficiales',
-    render() {
-      const pagos = db.where('pagos', p => p.estudianteId === estudiante.id).slice().sort((a, b) => b.fechaReporte.localeCompare(a.fechaReporte));
+    render(params = {}) {
+      const q = params.q || '';
+      const estadoF = ['Pendiente', 'Aprobado', 'Rechazado'].includes(params.estado) ? params.estado : '';
+      // Pila (LIFO): el último pago reportado es el primero que se ve.
+      const todos = Pila.desde(db.where('pagos', p => p.estudianteId === estudiante.id).slice()
+        .sort((a, b) => a.fechaReporte.localeCompare(b.fechaReporte))).toArray();
+      const tokens = fmt.norm(q).split(/\s+/).filter(Boolean);
+      const pagos = todos.filter(p => {
+        if (estadoF && p.estado !== estadoF) return false;
+        if (!tokens.length) return true;
+        const pen = db.find('pensiones', p.pensionId);
+        const hay = fmt.norm(`${pen?.concepto || ''} ${p.metodo} ${p.numeroOperacion} ${p.reciboNumero || ''} ${p.estado} ${p.monto}`);
+        return tokens.every(t => hay.includes(t));
+      });
+      const hayFiltro = !!(q || estadoF);
 
       return `
         <div class="card space-y-4">
@@ -320,7 +350,23 @@
             </div>
           </div>
 
-          ${pagos.length === 0 ? UI.empty('No tienes pagos registrados en el historial.') : UI.table({
+          ${todos.length === 0 ? '' : `
+            <div class="filters" style="--fcols:1">
+              <div class="input-icon">
+                <i class="fa-solid fa-magnifying-glass"></i>
+                <input type="search" id="filtro-his-q" class="input" placeholder="Buscar por concepto, método, N° de operación o recibo..." value="${fmt.esc(q)}">
+              </div>
+              <select id="filtro-his-est" class="select" aria-label="Estado del pago">
+                <option value="">Todos los estados</option>
+                ${[['Pendiente', 'En revisión'], ['Aprobado', 'Aprobados'], ['Rechazado', 'Rechazados']].map(([v, l]) => `<option value="${v}" ${estadoF === v ? 'selected' : ''}>${l}</option>`).join('')}
+              </select>
+            </div>
+            <p class="text-xs text-slate-500">
+              <b class="text-slate-700">${pagos.length}</b> ${pagos.length === 1 ? 'pago' : 'pagos'}${hayFiltro ? ' con los filtros aplicados' : ''}
+              · <span title="Pila (LIFO): el último pago reportado aparece primero"><i class="fa-solid fa-layer-group"></i> Más recientes primero</span>
+            </p>`}
+
+          ${todos.length === 0 ? UI.empty('No tienes pagos registrados en el historial.') : pagos.length === 0 ? UI.empty('No se encontraron pagos con la búsqueda aplicada.', 'fa-magnifying-glass') : UI.table({
             cols: [
               { label: 'Fecha Pago' },
               { label: 'Concepto' },
@@ -366,6 +412,13 @@
       `;
     },
     mount(params, root) {
+      const fq = document.getElementById('filtro-his-q');
+      const fe = document.getElementById('filtro-his-est');
+      if (fq && fe) {
+        const aplicar = () => Shell.go('historial', { q: fq.value.trim(), estado: fe.value });
+        fq.addEventListener('input', fmt.debounce(aplicar, 300));
+        fe.addEventListener('change', aplicar);
+      }
       root.addEventListener('click', e => {
         const btnV = e.target.closest('[data-hist-voucher]');
         if (btnV) {
@@ -409,8 +462,17 @@
     subtitle: 'Registre su transferencia por Yape o Plin adjuntando la captura del comprobante',
     render(params) {
       const pagosAll = db.all('pagos');
-      const pensionesPendientes = finance.pensionesDe(estudiante.id, pagosAll).filter(p => !p.anulada && p.saldo > 0);
-      const penPre = params.penId || (pensionesPendientes[0]?.id || '');
+      const conSaldo = finance.pensionesDe(estudiante.id, pagosAll).filter(p => !p.anulada && p.saldo > 0);
+      // Solo se puede reportar lo que aún no está cubierto ni en revisión (disponible > 0)
+      const pensionesPendientes = conSaldo.filter(p => p.disponible > 0);
+      // Orden de pago: solo se puede pagar la cuota más antigua pendiente; las demás aparecen bloqueadas.
+      const habilitadas = finance.habilitadas(estudiante.id, pagosAll);
+      // Desde "Pagar" (Mis Pensiones / Inicio) se paga SOLO esa cuota; desde el menú se listan todas.
+      const pedida = params.penId ? pensionesPendientes.find(p => p.id === params.penId) : null;
+      const pedidaBloqueada = !!pedida && !habilitadas.ids.has(pedida.id);
+      // Si pidió una cuota bloqueada, se le lleva a la que corresponde pagar primero.
+      const penFija = pedidaBloqueada ? habilitadas.primera : pedida;
+      const fechaMin = fmt.addDays(fmt.today(), -RULES.diasPagoAtras);
 
       return `
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -419,23 +481,49 @@
             <div class="card">
               <h3 class="card-title mb-4"><i class="fa-solid fa-receipt"></i> Formulario de Reporte de Pago</h3>
 
-              ${pensionesPendientes.length === 0 ? `
+              ${pensionesPendientes.length === 0 ? (conSaldo.length > 0 ? `
+                <div class="alert alert-info">
+                  <i class="fa-solid fa-hourglass-half text-xl ai"></i>
+                  <div><b>Pagos en revisión.</b> Todas tus cuotas pendientes ya tienen un pago reportado que está siendo verificado. Revisa su estado en el <a href="#historial" data-go="historial" class="font-bold underline">Historial de Pagos</a>.</div>
+                </div>
+              ` : `
                 <div class="alert alert-success">
                   <i class="fa-solid fa-circle-check text-xl ai"></i>
                   <div><b>¡Felicitaciones!</b> No tienes pensiones ni cuotas pendientes de pago en este momento.</div>
                 </div>
-              ` : `
+              `) : `
                 <form id="form-reportar-pago" class="space-y-5">
+                  ${pedidaBloqueada ? `
+                  <div class="alert alert-warning text-sm" role="alert">
+                    <i class="fa-solid fa-lock ai"></i>
+                    <div><b>Primero debe pagar la cuota más antigua.</b> «${fmt.esc(pedida.concepto)}» se habilitará cuando cancele «${fmt.esc(habilitadas.primera.concepto)}».</div>
+                  </div>` : ''}
                   <!-- Selección de Obligación -->
                   <div class="field">
                     <label class="label">Pensión / Cuota a Cancelar <span class="text-red-500">*</span></label>
-                    <select name="pensionId" id="rep-pension" class="select" required>
-                      ${pensionesPendientes.map(p => `
-                        <option value="${p.id}" data-saldo="${p.saldo}" ${penPre === p.id ? 'selected' : ''}>
-                          ${fmt.esc(p.concepto)} — Saldo Exigible: S/ ${p.saldo.toFixed(2)} (Vence: ${fmt.date(p.fechaVencimiento)})
-                        </option>
-                      `).join('')}
-                    </select>
+                    ${penFija ? `
+                      <!-- Llegó desde "Pagar": solo se muestra la cuota elegida (sin lista desplegable) -->
+                      <div class="locked-field">
+                        <i class="fa-solid fa-lock"></i>
+                        <div class="min-w-0">
+                          <p class="font-bold text-slate-800">${fmt.esc(penFija.concepto)}</p>
+                          <p class="text-xs text-slate-500">Vence: ${fmt.date(penFija.fechaVencimiento)} · A pagar: <b>S/ ${penFija.disponible.toFixed(2)}</b></p>
+                        </div>
+                      </div>
+                      <input type="hidden" name="pensionId" id="rep-pension" value="${penFija.id}" data-saldo="${penFija.disponible}">
+                      ${habilitadas.ids.size > 1 ? `<button type="button" class="link-sutil" data-go="reportar"><i class="fa-solid fa-list"></i> ¿Desea pagar otra cuota? Ver todas mis cuotas pendientes</button>` : ''}
+                    ` : `
+                      <select name="pensionId" id="rep-pension" class="select" required>
+                        <option value="">Seleccione la cuota que va a pagar...</option>
+                        ${pensionesPendientes.map(p => habilitadas.ids.has(p.id) ? `
+                          <option value="${p.id}" data-saldo="${p.disponible}">
+                            ${fmt.esc(p.concepto)} — A pagar: S/ ${p.disponible.toFixed(2)} (Vence: ${fmt.date(p.fechaVencimiento)})
+                          </option>` : `
+                          <option value="${p.id}" disabled>
+                            🔒 ${fmt.esc(p.concepto)} — Bloqueada: pague primero la cuota anterior
+                          </option>`).join('')}
+                      </select>
+                    `}
                   </div>
 
                   <!-- Método de Pago -->
@@ -467,12 +555,18 @@
                   <!-- Monto y Fecha -->
                   <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div class="field">
-                      <label class="label">Monto Transferido (S/) <span class="text-red-500">*</span></label>
-                      <input type="number" step="0.01" min="1" name="monto" id="rep-monto" class="input font-extrabold text-lg text-navy" required placeholder="0.00">
+                      <label class="label">Monto a Pagar (S/) <span class="text-xs text-slate-400 font-normal">(automático)</span></label>
+                      <div class="input-prefix">
+                        <span>S/</span>
+                        <input type="text" name="monto" id="rep-monto" class="input font-extrabold text-lg text-navy" readonly tabindex="-1"
+                               value="${penFija ? penFija.disponible.toFixed(2) : ''}" placeholder="Seleccione una cuota">
+                      </div>
+                      <span class="hint">El monto se toma del saldo de la cuota y no se puede modificar.</span>
                     </div>
                     <div class="field">
                       <label class="label">Fecha en que realizó el pago <span class="text-red-500">*</span></label>
-                      <input type="date" name="fechaPago" class="input" value="${fmt.today()}" required>
+                      <input type="date" name="fechaPago" class="input" value="${fmt.today()}" min="${fechaMin}" max="${fmt.today()}" required>
+                      <span class="hint">No se aceptan fechas de hace más de ${RULES.diasPagoAtras} días.</span>
                     </div>
                   </div>
 
@@ -484,6 +578,7 @@
                       <input type="text" inputmode="numeric" maxlength="6" pattern="\\d{6}" name="numeroOperacion" id="rep-op" class="input font-mono font-bold" placeholder="Ej: 482230" required>
                     </div>
                     <span class="hint">Código numérico que aparece en la constancia de su app bancaria.</span>
+                    <p id="rep-op-aviso" class="hint-warn" hidden></p>
                   </div>
 
                   <!-- Subida de Comprobante / Dropzone -->
@@ -496,7 +591,7 @@
                           <i class="fa-solid fa-cloud-arrow-up"></i>
                         </div>
                         <p class="font-bold text-sm text-slate-700">Arrastre aquí su comprobante o haga clic para subir</p>
-                        <p class="text-xs text-slate-400">PNG, JPG o WEBP (máx. 5 MB) · Se comprimirá para guardado local</p>
+                        <p class="text-xs text-slate-400">PNG, JPG o WEBP (máx. 6 MB) · Se comprimirá automáticamente</p>
                       </div>
                       <div id="dz-preview" class="hidden">
                         <img id="dz-img" src="" alt="Voucher" class="max-h-48 mx-auto rounded-lg shadow border">
@@ -584,15 +679,29 @@
         e.target.value = e.target.value.replace(/\D/g, '').slice(0, 6);
       });
 
-      // Autocompletar monto con el saldo de la obligación seleccionada
-      if (selP) {
-        const updateMonto = () => {
-          const opt = selP.selectedOptions[0];
-          if (opt && opt.dataset.saldo) inMonto.value = opt.dataset.saldo;
-        };
-        selP.addEventListener('change', updateMonto);
-        updateMonto();
-      }
+      const form = document.getElementById('form-reportar-pago');
+      const avisoOp = document.getElementById('rep-op-aviso');
+      const fechaMin = fmt.addDays(fmt.today(), -RULES.diasPagoAtras);
+
+      // El monto es automático (saldo disponible de la cuota) y no se puede editar.
+      const saldoElegido = () => !selP ? '' : (selP.tagName === 'SELECT' ? selP.selectedOptions[0]?.dataset.saldo : selP.dataset.saldo) || '';
+      const updateMonto = () => { const sd = saldoElegido(); inMonto.value = sd ? Number(sd).toFixed(2) : ''; };
+      if (selP) { selP.addEventListener('change', updateMonto); updateMonto(); }
+
+      // N° de operación repetido: solo cuenta dentro del MISMO método (el mismo código en Yape y en Plin es válido).
+      const metodoActual = () => form?.querySelector('input[name="metodo"]:checked')?.value || 'Yape';
+      const existeDuplicado = (op, metodo) =>
+        db.all('pagos').some(p => p.metodo === metodo && p.estado !== 'Rechazado' && String(p.numeroOperacion).trim() === op);
+      const revisarDuplicado = () => {
+        if (!avisoOp) return;
+        const op = (repOp?.value || '').trim();
+        const m = metodoActual();
+        const dup = /^\d{6}$/.test(op) && existeDuplicado(op, m);
+        avisoOp.hidden = !dup;
+        if (dup) avisoOp.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> El N° de operación <b>${fmt.esc(op)}</b> ya fue reportado con <b>${fmt.esc(m)}</b>. Verifique que sea correcto.`;
+      };
+      repOp?.addEventListener('input', revisarDuplicado);
+      form?.querySelectorAll('input[name="metodo"]').forEach(r => r.addEventListener('change', revisarDuplicado));
 
       // Manejo de Dropzone y carga de comprobante
       if (dropzone && fileInput) {
@@ -615,6 +724,7 @@
         async function handleFile(file) {
           try {
             voucherBase64 = await UI.fileToDataURL(file, 800, 0.7);
+            dropzone.classList.remove('invalid');
             dzImg.src = voucherBase64;
             dzEmpty.classList.add('hidden');
             dzPrev.classList.remove('hidden');
@@ -634,39 +744,54 @@
         });
       }
 
-      // Envío de formulario
-      const form = document.getElementById('form-reportar-pago');
+      // Envío de formulario (los errores de campo ya los validó Forms antes de llegar aquí)
       form?.addEventListener('submit', async e => {
         e.preventDefault();
         const fd = new FormData(form);
         const pensionId = fd.get('pensionId');
-        const monto = parseFloat(fd.get('monto')) || 0;
         const metodo = fd.get('metodo');
-        const numeroOperacion = fd.get('numeroOperacion').trim();
+        const numeroOperacion = String(fd.get('numeroOperacion') || '').trim();
         const fechaPago = fd.get('fechaPago');
 
-        if (!voucherBase64) {
-          return UI.alert('Falta el comprobante', 'Debe adjuntar la captura del comprobante o voucher para verificar la operación.', 'warning');
+        // El monto NO se toma del formulario: se recalcula desde el saldo real de la cuota.
+        const pen = db.find('pensiones', pensionId);
+        const info = pen && pen.estudianteId === estudiante.id ? finance.info(pen, db.all('pagos')) : null;
+        if (!info || info.disponible <= 0) {
+          return UI.alert('Cuota no disponible', 'Esta cuota ya no tiene saldo disponible para reportar (está cancelada o ya tiene un pago en revisión).', 'warning');
+        }
+        const monto = info.disponible;
+        const orden = finance.habilitadas(estudiante.id, db.all('pagos'));
+        if (!orden.ids.has(pensionId)) {
+          return UI.alert('Cuota no habilitada', `Las cuotas se pagan en orden. Primero debe pagar «${orden.primera ? orden.primera.concepto : 'la cuota más antigua'}».`, 'warning');
         }
 
+        if (!['Yape', 'Plin'].includes(metodo)) {
+          return UI.alert('Método no válido', 'Seleccione Yape o Plin como método de pago.', 'warning');
+        }
+        if (!fechaPago || fechaPago > fmt.today() || fechaPago < fechaMin) {
+          return UI.alert('Fecha no válida', `La fecha del pago no puede ser futura ni anterior a ${RULES.diasPagoAtras} días.`, 'warning');
+        }
         if (!validators.operacion(numeroOperacion)) {
           return UI.alert('N° de Operación Inválido', 'El número de operación debe tener exactamente 6 dígitos numéricos.', 'warning');
         }
+        if (!voucherBase64) {
+          dropzone?.classList.add('invalid');
+          dropzone?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          return UI.alert('Falta el comprobante', 'Debe adjuntar la captura del comprobante o voucher para verificar la operación.', 'warning');
+        }
 
-        // Si ya existe el número de operación
-        const yaExiste = db.all('pagos').some(p => p.numeroOperacion.toLowerCase() === numeroOperacion.toLowerCase());
-        if (yaExiste) {
+        // Advertencia solo si el mismo número ya se reportó con el mismo método de pago
+        if (existeDuplicado(numeroOperacion, metodo)) {
           const conf = await UI.confirm({
             title: '¿Número de Operación Duplicado?',
-            text: `El número de operación ${numeroOperacion} ya figura en el sistema. ¿Está seguro de que desea reportarlo nuevamente?`,
+            text: `El número de operación ${numeroOperacion} ya figura registrado con ${metodo}. ¿Está seguro de que desea reportarlo nuevamente?`,
             icon: 'warning'
           });
           if (!conf) return;
         }
 
-        const pen = db.find('pensiones', pensionId);
-
-        const nuevoPago = db.insert('pagos', {
+        await PT.Cargando.ejecutar(() => {
+        db.insert('pagos', {
           pensionId,
           estudianteId: estudiante.id,
           monto,
@@ -691,8 +816,11 @@
           tipo: 'info',
           link: 'historial'
         });
+        }, 'Enviando tu pago…');
 
-        UI.alert('¡Pago Reportado con Éxito!', 'Tu pago ha sido registrado y ha entrado a la cola de verificación del personal administrativo.<br><br>Recibirás una notificación cuando sea aprobado y tu recibo oficial sea generado.', 'success')
+        UI.alert('¡Pago Reportado con Éxito!', '', 'success',
+          '<p>Tu pago ha sido registrado y ha entrado a la cola de verificación del personal administrativo.</p>' +
+          '<p style="margin-top:.9rem">Recibirás una notificación cuando sea aprobado y tu recibo oficial sea generado.</p>')
           .then(() => {
             Shell.go('historial');
           });
@@ -765,7 +893,7 @@
 
                 <div class="field">
                   <label class="label">Dirección Domiciliaria</label>
-                  <input type="text" name="direccion" class="input" value="${fmt.esc(estudiante.direccion || '')}" placeholder="Av. Los Pinos 123">
+                  <input type="text" name="direccion" data-v="direccion" minlength="5" maxlength="120" class="input" value="${fmt.esc(estudiante.direccion || '')}" placeholder="Av. Los Pinos 123">
                 </div>
 
                 <div class="section-label pt-2">Datos del Apoderado Responsable</div>
@@ -793,11 +921,11 @@
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div class="field">
                     <label class="label">Contraseña Actual <span class="text-red-500">*</span></label>
-                    <input type="password" name="actual" class="input" required placeholder="••••••••">
+                    <input type="password" name="actual" class="input" required maxlength="40" placeholder="••••••••">
                   </div>
                   <div class="field">
                     <label class="label">Nueva Contraseña (mín. 6 caracteres) <span class="text-red-500">*</span></label>
-                    <input type="password" name="nueva" class="input" required minlength="6" placeholder="••••••••">
+                    <input type="password" name="nueva" data-v="password" data-differs="actual" data-differs-msg="La nueva contraseña debe ser distinta a la actual." class="input" required minlength="6" placeholder="••••••••">
                   </div>
                 </div>
 

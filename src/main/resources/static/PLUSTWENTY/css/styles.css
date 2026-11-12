@@ -469,3 +469,64 @@ body.modal-open { overflow: hidden; }
 /* En filtros de tabla la lista puede ser más ancha que el cuadro (nombres largos) */
 .est-picker[data-filtro] .est-picker-list { right: auto; min-width: min(440px, 90vw); }
 .btn[hidden] { display: none !important; }
+
+/* ================= VALIDACIÓN DE FORMULARIOS ================= */
+.field-error { font-size: .74rem; font-weight: 600; color: var(--pt-red); line-height: 1.3; margin-top: .05rem; }
+.input-icon > .field-error, .est-picker > .field-error {
+  position: absolute; left: .15rem; top: calc(100% + 2px); z-index: 25;
+  background: #fff; padding: .1rem .4rem; border-radius: 6px; box-shadow: var(--pt-shadow); white-space: nowrap; max-width: 92vw; overflow: hidden; text-overflow: ellipsis;
+}
+.textarea.invalid { border-color: var(--pt-red); box-shadow: 0 0 0 3px rgba(220, 38, 38, .12); }
+.hint-warn { font-size: .76rem; font-weight: 600; color: #B45309; background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 8px; padding: .35rem .6rem; }
+.hint-warn[hidden] { display: none; }
+.locked-field {
+  display: flex; align-items: center; gap: .75rem; padding: .7rem .9rem; border-radius: 10px;
+  background: #F3F4F6; border: 1px solid #D1D5DB; color: #374151;
+}
+.locked-field > i { color: #6B7280; }
+.link-sutil { font-size: .76rem; font-weight: 600; color: var(--pt-blue); cursor: pointer; background: none; border: 0; padding: 0; text-align: left; }
+.link-sutil:hover { text-decoration: underline; }
+
+/* ================= PAGINACIÓN DE TABLAS ================= */
+.pager { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .75rem; margin-top: .9rem; }
+.pager-info { font-size: .78rem; color: var(--pt-muted); }
+.pager-nav { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem; }
+.pg-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: .4rem; min-width: 34px; height: 34px; padding: 0 .7rem;
+  border-radius: 8px; border: 1px solid var(--pt-border); background: #fff; color: #1F2937; font-size: .8rem; font-weight: 600; cursor: pointer;
+  font-family: inherit; transition: background .12s, border-color .12s;
+}
+.pg-btn:hover:not(:disabled):not(.active) { background: #F9FAFB; border-color: #CBD5E1; }
+.pg-btn.active { background: var(--pt-blue); border-color: var(--pt-blue); color: #fff; cursor: default; }
+.pg-btn:disabled { opacity: .45; cursor: not-allowed; }
+.pg-gap { padding: 0 .25rem; color: #9CA3AF; }
+.pg-hidden { display: none !important; }
+@media (max-width: 520px) { .pg-btn span { display: none; } .pager { justify-content: center; } }
+@media print { .pager { display: none !important; } .pg-hidden { display: table-row !important; } }
+
+
+/* ---------- Indicador de carga global ---------- */
+.cargando-overlay { position: fixed; inset: 0; z-index: 3000; display: none; align-items: center; justify-content: center;
+  background: rgba(15, 23, 42, .45); backdrop-filter: blur(2px); cursor: progress; }
+.cargando-overlay.show { display: flex; }
+.cargando-card { background: #fff; border-radius: 16px; padding: 1.6rem 2.2rem; text-align: center; min-width: 230px;
+  box-shadow: 0 20px 50px rgba(15, 23, 42, .35); }
+.cargando-spinner { width: 46px; height: 46px; margin: 0 auto .9rem; border-radius: 50%;
+  border: 4px solid #E2E8F0; border-top-color: var(--c-navy, #1E3A8A); will-change: transform;
+  animation: cargando-giro .8s linear infinite; }
+.cargando-txt { font-weight: 800; color: #0F172A; font-size: 1rem; }
+.cargando-sub { font-size: .75rem; color: #64748B; margin-top: .25rem; }
+body.cargando-activo { overflow: hidden; }
+@keyframes cargando-giro { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .cargando-spinner { animation-duration: 2s; } }
+@media print { .cargando-overlay { display: none !important; } }
+
+
+/* ---------- Ojo para mostrar/ocultar contraseña ---------- */
+.pw-wrap { position: relative; }
+.pw-wrap > .input.con-ojo { padding-right: 2.9rem; }
+.pw-toggle { position: absolute; right: .35rem; top: 50%; transform: translateY(-50%); width: 2.2rem; height: 2.2rem; border: 0; background: transparent;
+  color: #64748B; border-radius: 8px; cursor: pointer; display: grid; place-items: center; font-size: .95rem; }
+.pw-toggle:hover { color: var(--pt-navy, #1E3A8A); background: #F1F5F9; }
+.pw-toggle:focus-visible { outline: 2px solid #2563EB; outline-offset: 1px; }
+input[type=password]::-ms-reveal, input[type=password]::-ms-clear { display: none; }

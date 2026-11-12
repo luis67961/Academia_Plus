@@ -15,7 +15,7 @@
 (function () {
   'use strict';
 
-  const { db, finance, auth, audit, notifyEstudiante, UI, Shell, docs, fmt, validators } = window.PT;
+  const { db, finance, auth, audit, notifyEstudiante, UI, Shell, docs, fmt, validators, RULES, Pila, Cola, Pager } = window.PT;
   const admin = auth.require('admin');
   if (!admin) return;
 
@@ -422,7 +422,7 @@
       if (!ok) return;
 
       // Una sola llamada: el servidor aprueba, emite recibo, notifica y audita en una transacción.
-      const saved = window.PT.revisionPagos.aprobar(pagoId);
+      const saved = await window.PT.Cargando.ejecutar(() => window.PT.revisionPagos.aprobar(pagoId), 'Aprobando pago…');
       UI.toast(`Pago aprobado. Recibo generado: ${saved.reciboNumero}`, 'success');
       updatePendingBadge();
     },
@@ -442,7 +442,7 @@
       if (!r || !r.motivo) return;
 
       // Una sola llamada: el servidor rechaza, notifica y audita en una transacción.
-      window.PT.revisionPagos.rechazar(pagoId, r.motivo);
+      await window.PT.Cargando.ejecutar(() => window.PT.revisionPagos.rechazar(pagoId, r.motivo), 'Rechazando pago…');
       UI.toast('Pago rechazado y notificado al estudiante', 'info');
       updatePendingBadge();
     }
@@ -630,11 +630,11 @@
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div class="field">
               <label class="label">Fecha de Matrícula</label>
-              <input type="date" name="fecha" class="input" value="${fmt.today()}" required>
+              <input type="date" name="fecha" class="input" value="${fmt.today()}" min="${fmt.addDays(fmt.today(), -365)}" max="${fmt.addDays(fmt.today(), 365)}" required>
             </div>
             <div class="field">
               <label class="label">Monto de Matrícula (S/)</label>
-              <input type="number" step="0.01" min="0" name="montoMatricula" id="mat-modal-monto" class="input" placeholder="0.00" required>
+              <input type="number" step="0.01" min="0" max="20000" name="montoMatricula" id="mat-modal-monto" class="input" placeholder="0.00" required>
             </div>
           </div>
 
@@ -722,12 +722,12 @@
 
         <div class="field">
           <label class="label">Fecha de Matrícula</label>
-          <input type="date" name="fecha" class="input" value="${mat.fecha}" required>
+          <input type="date" name="fecha" class="input" value="${mat.fecha}" min="${fmt.addDays(fmt.today(), -1095)}" max="${fmt.addDays(fmt.today(), 365)}" required>
         </div>
 
         <div class="field">
           <label class="label">Observaciones / Anotaciones</label>
-          <textarea name="observacion" class="textarea" rows="3">${fmt.esc(mat.observacion || '')}</textarea>
+          <textarea name="observacion" data-v="texto" maxlength="200" class="textarea" rows="3">${fmt.esc(mat.observacion || '')}</textarea>
         </div>
 
         <div class="modal-footer -mx-6 -mb-6 mt-6">
@@ -905,9 +905,9 @@
       const programas = db.all('programas').filter(p => p.activo);
       const ciclos = db.all('ciclos').filter(c => c.activo);
 
-      // Límites de fecha de nacimiento: entre hace 100 y hace 10 años (ni hoy ni futura).
+      // Límites de fecha de nacimiento (coherencia): edad entre RULES.edadMin y RULES.edadMax años.
       const fechaHace = anios => { const d = new Date(); d.setFullYear(d.getFullYear() - anios); return fmt.toISO(d); };
-      const maxNac = fechaHace(10), minNac = fechaHace(100);
+      const maxNac = fechaHace(RULES.edadMin), minNac = fechaHace(RULES.edadMax);
 
       const html = `
         <form id="form-estudiante" class="space-y-4">
@@ -925,18 +925,19 @@
             </div>
             <div class="field sm:col-span-2">
               <label class="label">Nombres Completos ${esEdicion ? '<span class="text-xs text-slate-400 font-normal">(No editable)</span>' : '<span class="text-red-500">*</span>'}</label>
-              <input type="text" name="nombres" class="input" value="${fmt.esc(est?.nombres || '')}" ${esEdicion ? 'readonly tabindex="-1"' : 'required'} placeholder="Ej: Valeria Nicole">
+              <input type="text" name="nombres" data-v="persona" class="input" value="${fmt.esc(est?.nombres || '')}" ${esEdicion ? 'readonly tabindex="-1"' : 'required'} placeholder="Ej: Valeria Nicole">
             </div>
           </div>
 
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div class="field">
               <label class="label">Apellidos ${esEdicion ? '<span class="text-xs text-slate-400 font-normal">(No editable)</span>' : '<span class="text-red-500">*</span>'}</label>
-              <input type="text" name="apellidos" class="input" value="${fmt.esc(est?.apellidos || '')}" ${esEdicion ? 'readonly tabindex="-1"' : 'required'} placeholder="Ej: Quispe Huamán">
+              <input type="text" name="apellidos" data-v="persona" class="input" value="${fmt.esc(est?.apellidos || '')}" ${esEdicion ? 'readonly tabindex="-1"' : 'required'} placeholder="Ej: Quispe Huamán">
             </div>
             <div class="field">
               <label class="label">Fecha de Nacimiento ${esEdicion ? '<span class="text-xs text-slate-400 font-normal">(No editable)</span>' : '<span class="text-red-500">*</span>'}</label>
-              <input type="date" name="fechaNacimiento" class="input" value="${est?.fechaNacimiento || '2008-01-01'}" min="${minNac}" max="${maxNac}" ${esEdicion ? 'readonly tabindex="-1" style="pointer-events: none;"' : 'required'}>
+              <input type="date" name="fechaNacimiento" class="input" value="${est?.fechaNacimiento || ''}" min="${minNac}" max="${maxNac}" ${esEdicion ? 'readonly tabindex="-1" style="pointer-events: none;"' : 'required'}>
+              ${esEdicion ? '' : `<span class="hint">Edad permitida: de ${RULES.edadMin} a ${RULES.edadMax} años.</span>`}
             </div>
           </div>
 
@@ -954,11 +955,11 @@
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div class="field">
               <label class="label">Dirección de Residencia</label>
-              <input type="text" name="direccion" class="input" value="${fmt.esc(est?.direccion || '')}" placeholder="Av. Universitaria 123">
+              <input type="text" name="direccion" data-v="direccion" minlength="5" maxlength="120" class="input" value="${fmt.esc(est?.direccion || '')}" placeholder="Av. Universitaria 123">
             </div>
             <div class="field">
               <label class="label">Colegio de Procedencia</label>
-              <input type="text" name="colegio" class="input" value="${fmt.esc(est?.colegio || '')}" placeholder="I.E. / Colegio">
+              <input type="text" name="colegio" data-v="direccion" minlength="3" maxlength="80" class="input" value="${fmt.esc(est?.colegio || '')}" placeholder="I.E. / Colegio">
             </div>
           </div>
 
@@ -966,11 +967,11 @@
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div class="field">
               <label class="label">Nombre del Apoderado <span class="text-red-500">*</span></label>
-              <input type="text" name="apo_nombre" class="input" value="${fmt.esc(est?.apoderado?.nombre || '')}" required placeholder="Nombre completo">
+              <input type="text" name="apo_nombre" data-v="persona" class="input" value="${fmt.esc(est?.apoderado?.nombre || '')}" required placeholder="Nombre completo">
             </div>
             <div class="field">
               <label class="label">DNI Apoderado</label>
-              <input type="text" name="apo_dni" maxlength="8" class="input font-mono" value="${fmt.esc(est?.apoderado?.dni || '')}" placeholder="8 dígitos">
+              <input type="text" name="apo_dni" maxlength="8" data-differs="dni" data-differs-msg="El DNI del apoderado no puede ser igual al del estudiante." class="input font-mono" value="${fmt.esc(est?.apoderado?.dni || '')}" placeholder="8 dígitos">
             </div>
           </div>
 
@@ -1058,7 +1059,7 @@
         }
 
         if (!esEdicion && !validators.birthdate(data.fechaNacimiento)) {
-          return UI.alert('Fecha de nacimiento inválida', 'La fecha no puede ser de hoy ni futura, y el estudiante debe tener entre 10 y 100 años.', 'error');
+          return UI.alert('Fecha de nacimiento inválida', `La fecha no puede ser de hoy ni futura, y el estudiante debe tener entre ${RULES.edadMin} y ${RULES.edadMax} años.`, 'error');
         }
 
         if (esEdicion) {
@@ -1336,17 +1337,17 @@
 
           <div class="field">
             <label class="label">Concepto Descriptivo <span class="text-red-500">*</span></label>
-            <input type="text" name="concepto" class="input" placeholder="Ej: Pensión Extraordinaria / Material Didáctico" required>
+            <input type="text" name="concepto" data-v="texto" minlength="3" maxlength="80" class="input" placeholder="Ej: Pensión Extraordinaria / Material Didáctico" required>
           </div>
 
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div class="field">
               <label class="label">Importe Exigible (S/) <span class="text-red-500">*</span></label>
-              <input type="number" step="0.01" min="1" name="importe" class="input" placeholder="0.00" required>
+              <input type="number" step="0.01" min="1" max="20000" name="importe" class="input" placeholder="0.00" required>
             </div>
             <div class="field">
               <label class="label">Fecha de Vencimiento <span class="text-red-500">*</span></label>
-              <input type="date" name="fechaVencimiento" class="input" value="${fmt.addDays(fmt.today(), 15)}" required>
+              <input type="date" name="fechaVencimiento" class="input" value="${fmt.addDays(fmt.today(), 15)}" min="${fmt.today()}" max="${fmt.addDays(fmt.today(), 730)}" required>
             </div>
           </div>
 
@@ -1416,7 +1417,7 @@
 
           <div class="field">
             <label class="label">Motivo o Justificación del Descuento <span class="text-red-500">*</span></label>
-            <textarea name="motivoDescuento" class="textarea" rows="3" placeholder="Ej: Beca por mérito académico, convenio institucional, descuento por hermanos..." required>${fmt.esc(pen.motivoDescuento || '')}</textarea>
+            <textarea name="motivoDescuento" data-v="texto" minlength="5" maxlength="200" class="textarea" rows="3" placeholder="Ej: Beca por mérito académico, convenio institucional, descuento por hermanos..." required>${fmt.esc(pen.motivoDescuento || '')}</textarea>
           </div>
 
           <div class="modal-footer -mx-6 -mb-6 mt-6">
@@ -1460,16 +1461,16 @@
         <form id="form-ajuste" class="space-y-4">
           <div class="field">
             <label class="label">Concepto</label>
-            <input type="text" name="concepto" class="input" value="${fmt.esc(pen.concepto)}" required>
+            <input type="text" name="concepto" data-v="texto" minlength="3" maxlength="80" class="input" value="${fmt.esc(pen.concepto)}" required>
           </div>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div class="field">
               <label class="label">Importe Base (S/)</label>
-              <input type="number" step="0.01" min="1" name="importe" class="input" value="${pen.importe}" required>
+              <input type="number" step="0.01" min="1" max="20000" name="importe" class="input" value="${pen.importe}" required>
             </div>
             <div class="field">
               <label class="label">Fecha de Vencimiento</label>
-              <input type="date" name="fechaVencimiento" class="input" value="${pen.fechaVencimiento}" required>
+              <input type="date" name="fechaVencimiento" class="input" value="${pen.fechaVencimiento}" min="${fmt.addDays(fmt.today(), -1095)}" max="${fmt.addDays(fmt.today(), 1095)}" required>
             </div>
           </div>
           <div class="modal-footer -mx-6 -mb-6 mt-6">
@@ -1508,7 +1509,7 @@
   const PagosView = {
     title: 'Verificación de Pagos',
     subtitle: 'Auditoría y conciliación de pagos reportados vía Yape, Plin y registro en efectivo',
-    POR_PAGINA: 20,
+    POR_PAGINA: 10,
 
     /* Estado de filtros → se guarda en la URL (#pagos?...) para sobrevivir a F5 y a refrescos tras aprobar/rechazar */
     leer(params) {
@@ -1533,11 +1534,13 @@
 
     fechaDe: p => p.fechaPago || String(p.fechaReporte || '').slice(0, 10),
 
-    /* Pagos que cumplen búsqueda + método + fechas (sin mirar la pestaña de estado) */
+    /* Pagos que cumplen búsqueda + método + fechas (sin mirar la pestaña de estado).
+       Se devuelven en orden cronológico (el primero que se reportó, primero); luego cada pestaña
+       los ordena como COLA (pendientes) o como PILA (historiales). */
     base(st) {
       const tokens = fmt.norm(st.q).split(/\s+/).filter(Boolean);
       return db.all('pagos').slice()
-        .sort((x, y) => y.fechaReporte.localeCompare(x.fechaReporte))
+        .sort((x, y) => x.fechaReporte.localeCompare(y.fechaReporte))
         .filter(p => {
           if (st.metodo && p.metodo !== st.metodo) return false;
           const f = PagosView.fechaDe(p);
@@ -1602,7 +1605,11 @@
     resultado(st) {
       const base = PagosView.base(st);
       const cuenta = e => base.filter(p => p.estado === e).length;
-      const filtrados = st.tab === 'todos' ? base : base.filter(p => p.estado === st.tab);
+      const delEstado = st.tab === 'todos' ? base : base.filter(p => p.estado === st.tab);
+      // Pendientes de verificación = COLA (FIFO: se atiende primero el más antiguo).
+      // Aprobados / Rechazados / Todos = PILA (LIFO: lo más reciente se ve primero).
+      const esCola = st.tab === 'Pendiente';
+      const filtrados = (esCola ? Cola.desde(delEstado) : Pila.desde(delEstado)).toArray();
 
       const total = filtrados.length;
       const paginas = Math.max(1, Math.ceil(total / PagosView.POR_PAGINA));
@@ -1653,6 +1660,7 @@
             <i class="fa-solid fa-circle-info ai"></i>
             <div>
               <b>Regla de Negocio:</b> Los pagos en estado <i>Pendiente</i> NO reducen la deuda del estudiante ni se computan como ingresos confirmados hasta que usted presione <b>Aprobar</b>.
+              <br><span class="text-xs"><i class="fa-solid fa-people-line"></i> <b>Cola de verificación (FIFO):</b> se atiende primero el pago reportado hace más tiempo.</span>
             </div>
           </div>
         ` : ''}
@@ -1662,6 +1670,9 @@
             <p><b class="text-slate-800">${total}</b> ${total === 1 ? 'pago' : 'pagos'}${PagosView.hayFiltros(st) ? ' con los filtros aplicados' : ''}
               · Total <b class="text-slate-800">${fmt.money(montoTotal)}</b>
               ${st.tab === 'todos' ? `· Aprobado <b class="text-emerald-600">${fmt.money(montoAprob)}</b>` : ''}</p>
+            <span class="chip ${esCola ? 'chip-info' : ''}" title="${esCola ? 'Cola (FIFO): el primero que reportó es el primero en atenderse' : 'Pila (LIFO): el último pago aparece primero'}">
+              <i class="fa-solid ${esCola ? 'fa-people-line' : 'fa-layer-group'}"></i> ${esCola ? 'Cola · más antiguos primero' : 'Pila · más recientes primero'}
+            </span>
           </div>` : ''}
 
         ${total === 0
@@ -1669,6 +1680,7 @@
               PagosView.hayFiltros(st) ? 'fa-magnifying-glass' : 'fa-circle-check',
               PagosView.hayFiltros(st) ? '<button class="btn btn-secondary btn-sm" data-limpiar-pagos><i class="fa-solid fa-eraser"></i> Limpiar filtros</button>' : '')
           : UI.table({
+              cls: 'no-auto-page',
               cols: [
                 { label: 'Fecha Reporte' },
                 { label: 'Estudiante' },
@@ -1835,11 +1847,12 @@
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div class="field">
               <label class="label">Monto Recibido en Efectivo (S/) <span class="text-red-500">*</span></label>
-              <input type="number" step="0.01" min="1" name="monto" id="ef-monto" class="input font-bold" placeholder="0.00" required>
+              <input type="number" step="0.01" min="0.01" name="monto" id="ef-monto" class="input font-bold" placeholder="0.00" required>
+              <span class="hint" id="ef-monto-hint">No puede superar el saldo de la cuota.</span>
             </div>
             <div class="field">
               <label class="label">Fecha de Cobro</label>
-              <input type="date" name="fechaPago" class="input" value="${fmt.today()}" required>
+              <input type="date" name="fechaPago" class="input" value="${fmt.today()}" min="${fmt.addDays(fmt.today(), -RULES.diasPagoAtras)}" max="${fmt.today()}" required>
             </div>
           </div>
 
@@ -1865,6 +1878,7 @@
 
       selE.addEventListener('change', () => {
         const estId = selE.value;
+        inM.value = ''; inM.removeAttribute('max');
         if (!estId) { selP.innerHTML = '<option value="">Primero seleccione estudiante...</option>'; return; }
         const pens = finance.pensionesDe(estId, pagosAll).filter(p => !p.anulada && p.saldo > 0);
         if (pens.length === 0) {
@@ -1877,7 +1891,11 @@
 
       selP.addEventListener('change', () => {
         const opt = selP.selectedOptions[0];
-        if (opt && opt.dataset.saldo) inM.value = opt.dataset.saldo;
+        if (opt && opt.dataset.saldo) {
+          inM.value = opt.dataset.saldo;
+          inM.max = opt.dataset.saldo;                         // no se puede cobrar más que el saldo
+          document.getElementById('ef-monto-hint').textContent = `Máximo a cobrar: S/ ${Number(opt.dataset.saldo).toFixed(2)} (saldo de la cuota).`;
+        } else { inM.value = ''; inM.removeAttribute('max'); }
       });
 
       document.getElementById('form-pago-efectivo').addEventListener('submit', e => {
@@ -1937,7 +1955,7 @@
             </div>
             <div class="page-actions">
               <button class="btn btn-secondary" id="btn-export-excel" disabled>
-                <i class="fa-solid fa-file-excel text-emerald-600"></i> Exportar a Excel (CSV)
+                <i class="fa-solid fa-file-excel text-emerald-600"></i> Exportar a Excel (.xlsx)
               </button>
               <button class="btn btn-primary" id="btn-print-report" disabled>
                 <i class="fa-solid fa-print"></i> Imprimir / Exportar a PDF
@@ -2170,40 +2188,103 @@
         }
       });
 
-      btnExcel?.addEventListener('click', () => {
+      btnExcel?.addEventListener('click', async () => {
         if (!reporteGenerado) return;
-        let csvContent = '\uFEFF';
-        if (reporteGenerado.tipo === 'ingresos') {
-          csvContent += 'Recibo,Fecha,Estudiante,DNI,Concepto,Metodo,Operacion,Monto\n';
-          reporteGenerado.items.forEach(p => {
-            const est = db.find('estudiantes', p.estudianteId);
-            const pen = db.find('pensiones', p.pensionId);
-            csvContent += `"${p.reciboNumero || ''}","${p.fechaPago}","${est?.nombres || ''} ${est?.apellidos || ''}","${est?.dni || ''}","${pen?.concepto || ''}","${p.metodo}","${p.numeroOperacion}","${p.monto}"\n`;
-          });
-          UI.download(`Reporte_Ingresos_${reporteGenerado.periodCode}.csv`, csvContent, 'text/csv;charset=utf-8');
-        } else if (reporteGenerado.tipo === 'morosidad') {
-          csvContent += 'Estudiante,DNI,Apoderado,Telefono,Concepto,Vencimiento,DiasAtraso,Saldo\n';
-          reporteGenerado.items.forEach(p => {
-            const est = db.find('estudiantes', p.estudianteId);
-            csvContent += `"${est?.nombres || ''} ${est?.apellidos || ''}","${est?.dni || ''}","${est?.apoderado?.nombre || ''}","${est?.apoderado?.telefono || ''}","${p.concepto}","${p.fechaVencimiento}","${p.diasAtraso}","${p.saldo}"\n`;
-          });
-          UI.download(`Reporte_Morosidad_${reporteGenerado.periodCode}.csv`, csvContent, 'text/csv;charset=utf-8');
-        } else {
-          csvContent += 'Codigo,Estudiante,DNI,Programa,Ciclo,Fecha,Estado\n';
-          reporteGenerado.items.forEach(m => {
-            const est = db.find('estudiantes', m.estudianteId);
-            const prg = db.find('programas', m.programaId);
-            const cic = db.find('ciclos', m.cicloId);
-            csvContent += `"${m.codigo}","${est?.nombres || ''} ${est?.apellidos || ''}","${est?.dni || ''}","${prg?.nombre || ''}","${cic?.nombre || ''}","${m.fecha}","${m.estado}"\n`;
-          });
-          UI.download(`Reporte_Matriculas_${reporteGenerado.periodCode}.csv`, csvContent, 'text/csv;charset=utf-8');
+        const xl = window.PT.excel;
+        if (!xl.disponible()) {
+          return UI.alert('Excel no disponible', 'No se pudo cargar el generador de Excel. Verifique su conexión a internet y recargue la página.', 'warning');
         }
-        UI.toast('Archivo CSV descargado para Excel');
+        const { tipo: tp, periodCode, periodLabel, items } = reporteGenerado;
+        const nombre = est => (est ? `${est.nombres} ${est.apellidos}` : '—');
+        let cfg;
+
+        if (tp === 'ingresos') {
+          const total = fmt.sum(items, p => p.monto);
+          const porMetodo = {};
+          items.forEach(p => { const m = porMetodo[p.metodo] || (porMetodo[p.metodo] = { n: 0, t: 0 }); m.n++; m.t = fmt.round2(m.t + Number(p.monto)); });
+          const filasRes = Object.entries(porMetodo).sort((a, b) => b[1].t - a[1].t).map(([m, v]) => [m, v.n, v.t]);
+          filasRes.push(['TOTAL', items.length, total]);
+          cfg = {
+            hoja: 'Ingresos', archivo: 'Reporte_Ingresos', titulo: 'REPORTE DE RECAUDACIÓN E INGRESOS CONFIRMADOS',
+            columnas: [
+              { titulo: 'Recibo N°', ancho: 14, tipo: 'codigo' }, { titulo: 'Fecha', ancho: 13, tipo: 'fecha' },
+              { titulo: 'Estudiante', ancho: 32, tipo: 'texto' }, { titulo: 'DNI', ancho: 12, tipo: 'codigo' },
+              { titulo: 'Concepto', ancho: 30, tipo: 'texto' }, { titulo: 'Método', ancho: 14, tipo: 'texto' },
+              { titulo: 'N° Operación', ancho: 15, tipo: 'codigo' }, { titulo: 'Importe Cobrado', ancho: 17, tipo: 'dinero' }
+            ],
+            filas: items.map(p => {
+              const est = db.find('estudiantes', p.estudianteId), pen = db.find('pensiones', p.pensionId);
+              return [p.reciboNumero || '—', xl.fecha(p.fechaPago), nombre(est), est?.dni || '', pen?.concepto || 'Cuota', p.metodo, String(p.numeroOperacion || ''), Number(p.monto)];
+            }),
+            totales: { etiqueta: `TOTAL GENERAL COBRADO (${periodLabel}):`, columnas: [{ idx: 8, tipo: 'suma', valor: total }] },
+            resumen: { titulo: 'Resumen de ingresos por método de pago', encabezados: ['Método de pago', 'N° de pagos', 'Total cobrado'], tipos: ['texto', 'entero', 'dinero'], filas: filasRes, ultimaEsTotal: true }
+          };
+        } else if (tp === 'morosidad') {
+          const total = fmt.sum(items, p => p.saldo);
+          const tramos = [['De 1 a 30 días', 1, 30], ['De 31 a 60 días', 31, 60], ['De 61 a 90 días', 61, 90], ['Más de 90 días', 91, Infinity]];
+          const filasRes = tramos.map(([l, a, b]) => {
+            const g = items.filter(p => p.diasAtraso >= a && p.diasAtraso <= b);
+            return [l, g.length, fmt.sum(g, p => p.saldo)];
+          });
+          filasRes.push(['TOTAL', items.length, total]);
+          cfg = {
+            hoja: 'Morosidad', archivo: 'Reporte_Morosidad', titulo: 'REPORTE DE MOROSIDAD Y PENSIONES VENCIDAS',
+            columnas: [
+              { titulo: 'Estudiante', ancho: 32, tipo: 'texto' }, { titulo: 'DNI', ancho: 12, tipo: 'codigo' },
+              { titulo: 'Apoderado', ancho: 28, tipo: 'texto' }, { titulo: 'Teléfono Apoderado', ancho: 17, tipo: 'codigo' },
+              { titulo: 'Concepto', ancho: 28, tipo: 'texto' }, { titulo: 'Vencimiento', ancho: 14, tipo: 'fecha' },
+              { titulo: 'Días de Atraso', ancho: 13, tipo: 'entero' }, { titulo: 'Saldo Pendiente', ancho: 17, tipo: 'dinero' }
+            ],
+            filas: items.map(p => {
+              const est = db.find('estudiantes', p.estudianteId);
+              return [nombre(est), est?.dni || '', est?.apoderado?.nombre || '—', est?.apoderado?.telefono || '—', p.concepto, xl.fecha(p.fechaVencimiento), Number(p.diasAtraso), Number(p.saldo)];
+            }),
+            totales: { etiqueta: `TOTAL DEUDA VENCIDA (${periodLabel}):`, columnas: [{ idx: 8, tipo: 'suma', valor: total }] },
+            resumen: { titulo: 'Antigüedad de la deuda vencida', encabezados: ['Antigüedad de la deuda', 'N° de cuotas', 'Deuda vencida'], tipos: ['texto', 'entero', 'dinero'], filas: filasRes, ultimaEsTotal: true }
+          };
+        } else {
+          const total = fmt.sum(items, m => m.montoMatricula);
+          const porPrg = {};
+          items.forEach(m => {
+            const nom = db.find('programas', m.programaId)?.nombre || '—';
+            const g = porPrg[nom] || (porPrg[nom] = { n: 0, a: 0, t: 0 });
+            g.n++; if (m.estado === 'Activa') g.a++; g.t = fmt.round2(g.t + Number(m.montoMatricula || 0));
+          });
+          const filasRes = Object.entries(porPrg).sort((a, b) => b[1].n - a[1].n).map(([n, g]) => [n, g.n, g.a, g.t]);
+          filasRes.push(['TOTAL', items.length, items.filter(m => m.estado === 'Activa').length, total]);
+          cfg = {
+            hoja: 'Matrículas', archivo: 'Reporte_Matriculas', titulo: 'REPORTE DE MATRÍCULAS POR CICLO',
+            columnas: [
+              { titulo: 'Código', ancho: 16, tipo: 'codigo' }, { titulo: 'Estudiante', ancho: 32, tipo: 'texto' },
+              { titulo: 'DNI', ancho: 12, tipo: 'codigo' }, { titulo: 'Programa', ancho: 30, tipo: 'texto' },
+              { titulo: 'Ciclo', ancho: 12, tipo: 'codigo' }, { titulo: 'Fecha', ancho: 13, tipo: 'fecha' },
+              { titulo: 'Estado', ancho: 12, tipo: 'codigo' }, { titulo: 'Monto Matrícula', ancho: 17, tipo: 'dinero' }
+            ],
+            filas: items.map(m => {
+              const est = db.find('estudiantes', m.estudianteId), prg = db.find('programas', m.programaId), cic = db.find('ciclos', m.cicloId);
+              return [m.codigo, nombre(est), est?.dni || '', prg?.nombre || '—', cic?.nombre || '—', xl.fecha(m.fecha), m.estado, Number(m.montoMatricula || 0)];
+            }),
+            totales: { etiqueta: `TOTAL: ${items.length} MATRÍCULAS (${periodLabel}):`, columnas: [{ idx: 8, tipo: 'suma', valor: total }] },
+            resumen: { titulo: 'Matrículas por programa académico', encabezados: ['Programa', 'Matrículas', 'Activas', 'Monto total'], tipos: ['texto', 'entero', 'entero', 'dinero'], filas: filasRes, ultimaEsTotal: true }
+          };
+        }
+
+        btnExcel.disabled = true;
+        try {
+          const blob = await xl.generar({ ...cfg, periodo: periodLabel, usuario: admin.nombre });
+          UI.download(`${cfg.archivo}_${periodCode}.xlsx`, blob, blob.type);
+          UI.toast('Archivo Excel (.xlsx) descargado');
+        } catch (err) {
+          console.error(err);
+          UI.alert('No se pudo generar el Excel', 'Ocurrió un problema al crear el archivo. Intente nuevamente.', 'error');
+        } finally {
+          btnExcel.disabled = false;
+        }
       });
 
       btnPrint?.addEventListener('click', () => {
         if (!reporteGenerado) return;
-        const contenidoArea = area.innerHTML;
+        const contenidoArea = window.PT.Pager.sinPaginar(area);   // imprime TODAS las filas, sin barras de página
         const titulos = { ingresos: 'Recaudación e Ingresos', morosidad: 'Morosidad y Saldos Vencidos', matriculas: 'Padrón de Matrículas' };
         const nomReporte = titulos[reporteGenerado.tipo] || 'Reporte Financiero';
         const html = `
@@ -2330,10 +2411,12 @@
           const u = db.find('users', btnT.dataset.toggleUser);
           if (!u) return;
           const nuevo = !u.activo;
-          db.update('users', u.id, { activo: nuevo });
-          audit(`Cambió estado de usuario "${u.username}" a ${nuevo ? 'Activo' : 'Inactivo'}`, 'Gestión de Usuarios y Roles');
-          UI.toast(`Usuario ${nuevo ? 'activado' : 'desactivado'}`);
-          Shell.refresh();
+          window.PT.Cargando.ejecutar(() => {
+            db.update('users', u.id, { activo: nuevo });
+            audit(`Cambió estado de usuario "${u.username}" a ${nuevo ? 'Activo' : 'Inactivo'}`, 'Gestión de Usuarios y Roles');
+            UI.toast(`Usuario ${nuevo ? 'activado' : 'desactivado'}`);
+            Shell.refresh();
+          }, 'Actualizando usuario…');
         }
       });
     },
@@ -2360,7 +2443,7 @@
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div class="field">
               <label class="label">Nombre Completo <span class="text-red-500">*</span></label>
-              <input type="text" name="nombre" class="input" required placeholder="Ej: Lic. Mario Vargas">
+              <input type="text" name="nombre" data-v="persona" class="input" required placeholder="Ej: Mario Vargas Llosa">
             </div>
             <div class="field">
               <label class="label">Correo Electrónico <span class="text-red-500">*</span></label>
@@ -2375,7 +2458,7 @@
             </div>
             <div class="field">
               <label class="label">Contraseña Inicial <span class="text-red-500">*</span></label>
-              <input type="password" name="password" class="input" required value="123456">
+              <input type="password" name="password" data-v="password" minlength="6" class="input" required value="123456">
             </div>
           </div>
 
@@ -2435,9 +2518,15 @@
       });
       if (!r || !r.motivo) return;
 
-      db.update('users', u.id, { password: r.motivo });
-      audit(`Reseteó contraseña del usuario "${u.username}"`, 'Gestión de Usuarios y Roles');
-      UI.alert('Contraseña Actualizada', `La nueva contraseña para <b>${u.username}</b> es:<br><br><span class="text-xl font-mono font-extrabold text-navy">${fmt.esc(r.motivo)}</span>`, 'success');
+      if (r.motivo.length < 6 || /\s/.test(r.motivo)) {
+        return UI.alert('Contraseña no válida', 'La contraseña debe tener al menos 6 caracteres y no puede contener espacios.', 'warning');
+      }
+      await window.PT.Cargando.ejecutar(() => {
+        db.update('users', u.id, { password: r.motivo });
+        audit(`Reseteó contraseña del usuario "${u.username}"`, 'Gestión de Usuarios y Roles');
+      }, 'Actualizando contraseña…');
+      UI.alert('Contraseña Actualizada', '', 'success',
+        `<p>La nueva contraseña para <b>${fmt.esc(u.username)}</b> es:</p><p style="margin-top:.8rem"><span class="text-xl font-mono font-extrabold text-navy">${fmt.esc(r.motivo)}</span></p>`);
     }
   };
 
@@ -2545,16 +2634,16 @@
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div class="field">
               <label class="label">Nombre del Programa <span class="text-red-500">*</span></label>
-              <input type="text" name="nombre" class="input" value="${fmt.esc(p?.nombre || '')}" required placeholder="Ej: Universidad Nacional de Trujillo">
+              <input type="text" name="nombre" data-v="titulo" class="input" value="${fmt.esc(p?.nombre || '')}" required placeholder="Ej: Universidad Nacional de Trujillo">
             </div>
             <div class="field">
               <label class="label">Siglas / Código <span class="text-red-500">*</span></label>
-              <input type="text" name="siglas" class="input uppercase" value="${fmt.esc(p?.siglas || '')}" required placeholder="UNT">
+              <input type="text" name="siglas" data-v="siglas" class="input uppercase" value="${fmt.esc(p?.siglas || '')}" required placeholder="UNT">
             </div>
           </div>
           <div class="field">
             <label class="label">Descripción</label>
-            <textarea name="descripcion" class="textarea" rows="2">${fmt.esc(p?.descripcion || '')}</textarea>
+            <textarea name="descripcion" data-v="texto" maxlength="200" class="textarea" rows="2">${fmt.esc(p?.descripcion || '')}</textarea>
           </div>
           <div class="field">
             <label class="label">Color Distintivo</label>
@@ -2612,7 +2701,7 @@
             </div>
             <div class="field">
               <label class="label">Nombre del Ciclo <span class="text-red-500">*</span></label>
-              <input type="text" name="nombre" class="input" value="${fmt.esc(c?.nombre || '2026-II')}" required placeholder="2026-II">
+              <input type="text" name="nombre" data-v="ciclo" class="input uppercase" value="${fmt.esc(c?.nombre || '2026-II')}" required placeholder="2026-II">
             </div>
           </div>
 
@@ -2628,26 +2717,26 @@
             </div>
             <div class="field">
               <label class="label">Fecha Inicio</label>
-              <input type="date" name="fechaInicio" class="input" value="${c?.fechaInicio || '2026-08-01'}" required>
+              <input type="date" name="fechaInicio" class="input" value="${c?.fechaInicio || '2026-08-01'}" min="${fmt.addDays(fmt.today(), -1095)}" max="${fmt.addDays(fmt.today(), 1095)}" required>
             </div>
             <div class="field">
               <label class="label">Fecha Fin</label>
-              <input type="date" name="fechaFin" class="input" value="${c?.fechaFin || '2026-12-15'}" required>
+              <input type="date" name="fechaFin" data-after="fechaInicio" data-after-msg="La fecha de fin debe ser posterior a la fecha de inicio." class="input" value="${c?.fechaFin || '2026-12-15'}" min="${fmt.addDays(fmt.today(), -1095)}" max="${fmt.addDays(fmt.today(), 1460)}" required>
             </div>
           </div>
 
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div class="field">
               <label class="label">Costo Matrícula (S/)</label>
-              <input type="number" step="0.01" min="0" name="matricula" class="input" value="${c?.matricula ?? 150}" required>
+              <input type="number" step="0.01" min="0" max="5000" name="matricula" class="input" value="${c?.matricula ?? 150}" required>
             </div>
             <div class="field">
               <label class="label">Pensión Mensual (S/)</label>
-              <input type="number" step="0.01" min="0" name="pension" class="input" value="${c?.pension ?? 400}" required>
+              <input type="number" step="0.01" min="1" max="5000" name="pension" class="input" value="${c?.pension ?? 400}" required>
             </div>
             <div class="field">
               <label class="label">N° de Pensiones</label>
-              <input type="number" min="1" max="12" name="cuotas" class="input" value="${c?.cuotas ?? 4}" required>
+              <input type="number" step="1" min="1" max="12" name="cuotas" class="input" value="${c?.cuotas ?? 4}" required>
             </div>
           </div>
 

@@ -68,14 +68,18 @@
     return Array.from({ length: len }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
   };
 
+  // Límites de coherencia usados por validadores y formularios (una sola fuente de verdad).
+  const RULES = { edadMin: 12, edadMax: 70, diasPagoAtras: 30 };
+  const fechaHaceAnios = n => { const d = new Date(); d.setFullYear(d.getFullYear() - n); return toISO(d); };
+
   const validators = {
-    dni: v => /^\d{8}$/.test(String(v || '').trim()),
+    dni: v => /^\d{8}$/.test(String(v || '').trim()) && !/^(\d)\1{7}$/.test(String(v || '').trim()),
     email: v => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(v || '').trim()),
     // Celular peruano: 9 dígitos que empiezan con 9.
     phone: v => /^9\d{8}$/.test(String(v || '').replace(/\s/g, '')),
     username: v => /^[a-z0-9._]{3,24}$/.test(String(v || '')),
     operacion: v => /^\d{6}$/.test(String(v || '').trim()),
-    // Fecha de nacimiento: válida, en el pasado (ni hoy ni futura) y con edad entre 10 y 100 años.
+    // Fecha de nacimiento: válida, en el pasado (ni hoy ni futura) y con edad entre RULES.edadMin y RULES.edadMax años.
     birthdate: v => {
       const d = parseDate(v);
       if (!d || isNaN(d)) return false;
@@ -84,7 +88,7 @@
       let edad = hoy.getFullYear() - d.getFullYear();
       const m = hoy.getMonth() - d.getMonth();
       if (m < 0 || (m === 0 && hoy.getDate() < d.getDate())) edad--;
-      return edad >= 10 && edad <= 100;
+      return edad >= RULES.edadMin && edad <= RULES.edadMax;
     }
   };
 
@@ -299,6 +303,20 @@
       return db.where('pensiones', p => p.estudianteId === estId)
         .map(p => finance.info(p, pagos))
         .sort((a, b) => a.fechaVencimiento.localeCompare(b.fechaVencimiento) || (a.numeroCuota || 0) - (b.numeroCuota || 0));
+    },
+    /**
+     * Orden de pago: en cada matrícula solo se puede pagar la cuota MÁS ANTIGUA que aún tenga saldo
+     * disponible (no cancelada ni ya reportada en revisión). Las siguientes quedan bloqueadas hasta entonces.
+     * Devuelve { ids: Set de cuotas habilitadas, primera: cuota más antigua habilitada }.
+     */
+    habilitadas(estId, pagosAll) {
+      const ids = new Set(); const vistos = new Set(); let primera = null;
+      finance.pensionesDe(estId, pagosAll).filter(p => !p.anulada && p.disponible > 0).forEach(p => {
+        const k = p.matriculaId || p.cicloId || 'sin-matricula';
+        if (vistos.has(k)) return;
+        vistos.add(k); ids.add(p.id); if (!primera) primera = p;
+      });
+      return { ids, primera };
     },
     resumen(estId) {
       const pagosAll = db.all('pagos');
@@ -747,7 +765,8 @@
       if (focusId) { try { selStart = ae.selectionStart; selEnd = ae.selectionEnd; } catch (_) {} }
       try {
         root.innerHTML = `<div class="view-enter">${v.render(params)}</div>`;
-        v.mount && v.mount(params, root);
+        // Se pasa el contenedor interno (se destruye en cada render): así los listeners no se acumulan entre navegaciones.
+        v.mount && v.mount(params, root.firstElementChild);
       } catch (err) {
         console.error(err);
         root.innerHTML = UI.empty('Ocurrió un error al cargar esta sección.', 'fa-bug');
@@ -781,6 +800,662 @@
   };
 
   /* ------------------------------------------------------------------
+     Estructuras de datos: Pila (LIFO) y Cola (FIFO)
+     - Cola: pagos pendientes de verificación (el primero que reporta, el primero que se atiende).
+     - Pila: historiales (lo último que ocurrió se ve primero).
+     ------------------------------------------------------------------ */
+  class Pila {
+    constructor() { this.datos = []; }
+    push(x) { this.datos.push(x); return this; }
+    pop() { return this.datos.pop(); }
+    peek() { return this.datos[this.datos.length - 1]; }
+    get size() { return this.datos.length; }
+    /** Elementos en el orden en que saldrían: primero el último que entró (tope de la pila). */
+    toArray() { return this.datos.slice().reverse(); }
+    static desde(items) { const p = new Pila(); items.forEach(i => p.push(i)); return p; }
+  }
+  class Cola {
+    constructor() { this.datos = []; }
+    enqueue(x) { this.datos.push(x); return this; }
+    dequeue() { return this.datos.shift(); }
+    peek() { return this.datos[0]; }
+    get size() { return this.datos.length; }
+    /** Elementos en el orden en que saldrían: primero el que entró antes. */
+    toArray() { return this.datos.slice(); }
+    static desde(items) { const c = new Cola(); items.forEach(i => c.enqueue(i)); return c; }
+  }
+
+  /* ------------------------------------------------------------------
+     Validación estricta de formularios y búsquedas
+     - Filtra los caracteres no permitidos mientras se escribe (DNI solo números, nombres solo letras…).
+     - Muestra el error en rojo debajo de cada campo (sin globos del navegador).
+     - Se aplica a TODOS los formularios y cuadros de búsqueda por delegación de eventos.
+     ------------------------------------------------------------------ */
+  /* ------------------------------------------------------------------
+     Indicador de carga global ("Guardando…")
+     Las llamadas al servidor son síncronas y congelan la pantalla; por eso primero se
+     muestra el aviso, se deja que el navegador lo dibuje y recién entonces se llama al servidor.
+     ------------------------------------------------------------------ */
+  const Cargando = (() => {
+    let el = null, activos = 0;
+    function asegurar() {
+      if (el && el.isConnected) return el;
+      el = document.createElement('div');
+      el.className = 'cargando-overlay';
+      el.setAttribute('role', 'status');
+      el.setAttribute('aria-live', 'polite');
+      el.innerHTML = '<div class="cargando-card"><div class="cargando-spinner" aria-hidden="true"></div><p class="cargando-txt">Guardando…</p><p class="cargando-sub">Esto puede tardar unos segundos</p></div>';
+      document.body.appendChild(el);
+      return el;
+    }
+    function mostrar(texto) {
+      activos++;
+      const e = asegurar();
+      e.querySelector('.cargando-txt').textContent = texto || 'Guardando…';
+      e.classList.add('show');
+      document.body.classList.add('cargando-activo');
+    }
+    function ocultar() {
+      activos = Math.max(0, activos - 1);
+      if (activos === 0 && el) { el.classList.remove('show'); document.body.classList.remove('cargando-activo'); }
+    }
+    // Espera a que el navegador dibuje el aviso (con tope por si la pestaña está en segundo plano).
+    function pintar() {
+      return new Promise(res => {
+        let hecho = false;
+        const fin = () => { if (!hecho) { hecho = true; res(); } };
+        requestAnimationFrame(() => setTimeout(fin, 30));
+        setTimeout(fin, 150);
+      });
+    }
+    // Ejecuta trabajo pesado mostrando el aviso; admite funciones síncronas o asíncronas.
+    async function ejecutar(fn, texto) {
+      mostrar(texto);
+      try { await pintar(); return await fn(); }
+      finally { ocultar(); }
+    }
+    return { mostrar, ocultar, pintar, ejecutar };
+  })();
+
+  const Forms = (() => {
+    const LET = 'A-Za-zÁÉÍÓÚÜÑáéíóúüñ';
+    const colapsar = v => v.replace(/\s{2,}/g, ' ').replace(/^\s+/, '');
+    const esFecha = iso => { const [y, m, d] = String(iso).split('-'); return `${d}/${m}/${y}`; };
+    const soloLetras = v => (v.match(new RegExp(`[${LET}]`, 'g')) || []).length;
+
+    /* Celulares inventados: dígitos repetidos (999999999, 911111111) o solo 2 dígitos alternados (989898989).
+       Las secuencias (987654321, 912345678) SÍ se permiten: pueden ser números reales. */
+    const celularFalso = v => /(\d)\1{5,}/.test(v) || new Set(v.slice(1)).size <= 2;
+    const REGLAS = {
+      dni: {
+        hint: 'El DNI solo admite números (8 dígitos).',
+        limpiar: v => v.replace(/\D/g, '').slice(0, 8),
+        validar: v => !/^\d{8}$/.test(v) ? 'El DNI debe tener exactamente 8 dígitos.' : (/^(\d)\1{7}$/.test(v) ? 'El DNI ingresado no es válido.' : '')
+      },
+      celular: {
+        hint: 'El celular solo admite números (9 dígitos).',
+        limpiar: v => v.replace(/\D/g, '').slice(0, 9),
+        validar: v => !/^\d{9}$/.test(v) ? 'El celular debe tener 9 dígitos.'
+          : (v[0] !== '9' ? 'El celular debe empezar con 9.'
+          : (celularFalso(v) ? 'Ingrese un celular real: no se aceptan números con dígitos repetidos (por ejemplo 999999999).' : ''))
+      },
+      operacion: {
+        hint: 'El N° de operación solo admite números (6 dígitos).',
+        limpiar: v => v.replace(/\D/g, '').slice(0, 6),
+        validar: v => /^\d{6}$/.test(v) ? '' : 'El N° de operación debe tener exactamente 6 dígitos.'
+      },
+      persona: {
+        hint: 'Solo se permiten letras (sin números ni símbolos).',
+        limpiar: v => colapsar(v.replace(new RegExp(`[^${LET}\\s'-]`, 'g'), '')).slice(0, 60),
+        validar: v => soloLetras(v) < 2 ? 'Ingrese al menos 2 letras.' : ''
+      },
+      texto: {
+        hint: 'No se permiten símbolos como < > { } [ ] | ^ ~ ` $ % * = "',
+        limpiar: v => colapsar(v.replace(/[<>{}[\]|\\^~`$%*="]/g, '')),
+        validar: () => ''
+      },
+      titulo: {
+        hint: 'Solo letras, números, espacios y . , & ( ) -',
+        limpiar: v => colapsar(v.replace(new RegExp(`[^${LET}0-9\\s.,&()-]`, 'g'), '')).slice(0, 80),
+        validar: v => soloLetras(v) < 3 ? 'Ingrese un nombre válido (mínimo 3 letras).' : ''
+      },
+      siglas: {
+        hint: 'Las siglas solo admiten letras y números, sin espacios.',
+        limpiar: v => v.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10),
+        validar: v => v.length < 2 ? 'Las siglas deben tener entre 2 y 10 caracteres.' : ''
+      },
+      ciclo: {
+        hint: 'Formato del ciclo: AAAA-II (por ejemplo 2026-II).',
+        limpiar: v => v.toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, 12),
+        validar: v => /^\d{4}-[A-Z0-9]{1,6}$/.test(v) ? '' : 'Use el formato AAAA-II (por ejemplo 2026-II).'
+      },
+      email: {
+        hint: 'El correo solo admite letras, números y . _ % + - (con una sola @).',
+        limpiar: v => {
+          let r = v.replace(/\s/g, '').toLowerCase().replace(/[^a-z0-9._%+@-]/g, '');
+          const k = r.indexOf('@');
+          if (k >= 0) r = r.slice(0, k + 1) + r.slice(k + 1).replace(/@/g, '').replace(/[^a-z0-9.-]/g, '');   // una sola @; el dominio solo letras, números, punto y guion
+          return r.replace(/^[._%+-]+/, '').replace(/\.{2,}/g, '.').slice(0, 80);
+        },
+        validar: v => {
+          if ((v.match(/@/g) || []).length > 1) return 'El correo solo puede tener una @.';
+          const [local = '', dom = ''] = v.split('@');
+          const ok = local.length >= 3 && /^[a-z0-9]([a-z0-9._%+-]*[a-z0-9])?$/.test(local)
+            && /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*\.[a-z]{2,}$/.test(dom)
+            && !v.includes('..');
+          return ok ? '' : 'Ingrese un correo válido (por ejemplo nombre@gmail.com).';
+        }
+      },
+      direccion: {
+        hint: 'Solo letras, números y . , # ° / - (sin símbolos como " \' ¿ ¡ ? ´ ¨ + *).',
+        limpiar: v => colapsar(v.replace(new RegExp(`[^${LET}0-9\\s.,#°º/-]`, 'g'), '')).slice(0, 120),
+        validar: v => (soloLetras(v) < 3 || /(.)\1{4,}/i.test(v))
+          ? 'Ingrese un dato válido: use letras y números reales, sin caracteres repetidos.' : ''
+      },
+      username: {
+        hint: 'El usuario solo admite letras minúsculas, números, punto y guion bajo.',
+        limpiar: v => v.toLowerCase().replace(/[^a-z0-9._]/g, '').slice(0, 24),
+        validar: v => /^[a-z0-9][a-z0-9._]{2,23}$/.test(v) && !v.includes('..')
+          ? '' : 'El usuario debe tener de 3 a 24 caracteres (letras, números, punto o guion bajo) y empezar con letra o número.'
+      },
+      password: {
+        hint: 'La contraseña no admite espacios.',
+        limpiar: v => v.replace(/\s/g, '').slice(0, 40),
+        validar: v => v.length < 6 ? 'La contraseña debe tener al menos 6 caracteres.' : ''
+      },
+      busqueda: {
+        hint: 'Solo letras, números y guion (sin símbolos como * % " \').',
+        limpiar: v => {
+          let r = colapsar(v.replace(new RegExp(`[^${LET}0-9\\s-]`, 'g'), '')).slice(0, 40);
+          if (/^\d+$/.test(r)) r = r.slice(0, 8);      // solo números = DNI (máx. 8 dígitos)
+          return r;
+        },
+        validar: () => ''
+      }
+    };
+    const POR_NOMBRE = { dni: 'dni', apo_dni: 'dni', telefono: 'celular', apo_telefono: 'celular', email: 'email', username: 'username', numeroOperacion: 'operacion' };
+
+    const reglaDe = el => {
+      if (el.matches?.('.est-picker-input') || el.type === 'search') return REGLAS.busqueda;
+      const k = el.dataset?.v || POR_NOMBRE[el.name];
+      return k ? REGLAS[k] : null;
+    };
+
+    /* ---------- presentación de errores ---------- */
+    const hostDe = el => el.closest('.field') || el.closest('.input-icon') || el.parentElement;
+    const errorDe = el => hostDe(el).querySelector(':scope > .field-error');
+
+    function mostrar(el, msg) {
+      const host = hostDe(el);
+      let p = errorDe(el);
+      if (!msg) {
+        if (p) p.remove();
+        el.classList.remove('invalid'); el.removeAttribute('aria-invalid');
+        return;
+      }
+      if (!p) { p = document.createElement('p'); p.className = 'field-error'; p.setAttribute('role', 'alert'); host.appendChild(p); }
+      delete p.dataset.flash; clearTimeout(p._t);
+      p.textContent = msg;
+      el.classList.add('invalid'); el.setAttribute('aria-invalid', 'true');
+    }
+    /** Aviso temporal cuando se rechaza un carácter al escribir. No pisa un error real. */
+    function aviso(el, msg) {
+      let p = errorDe(el);
+      if (p && !p.dataset.flash) return;
+      if (!p) { p = document.createElement('p'); p.className = 'field-error'; p.setAttribute('role', 'alert'); hostDe(el).appendChild(p); }
+      p.dataset.flash = '1'; p.textContent = msg; el.classList.add('invalid');
+      clearTimeout(p._t);
+      p._t = setTimeout(() => { if (p.dataset.flash) { p.remove(); el.classList.remove('invalid'); } }, 2200);
+    }
+
+    /* ---------- reglas de validación por campo ---------- */
+    function mensaje(el) {
+      const picker = el.closest?.('.est-picker');
+      if (picker) {                                   // buscador con autocompletado (estudiante / programa)
+        if (picker.hasAttribute('data-filtro')) return '';
+        const hid = picker.querySelector('input[type=hidden]');
+        if (hid.value) return '';
+        if (el.value.trim()) return 'Seleccione una opción de la lista de sugerencias.';
+        return el.required ? (picker.dataset.tipo === 'programa'
+          ? 'Busque y seleccione un programa (por nombre o siglas).'
+          : 'Busque y seleccione un estudiante (por DNI, apellidos o nombres).') : '';
+      }
+      if (el.tagName === 'SELECT') return el.required && !el.value ? 'Seleccione una opción.' : '';
+
+      const v = el.value;
+      if (el.type === 'date') {
+        if (!v) return el.required ? (el.validity.badInput ? 'La fecha está incompleta o no es válida.' : 'Este campo es obligatorio.') : '';
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(v) || isNaN(parseDate(v))) return 'La fecha no es válida.';
+        if (el.min && v < el.min) return `La fecha no puede ser anterior al ${esFecha(el.min)}.`;
+        if (el.max && v > el.max) return `La fecha no puede ser posterior al ${esFecha(el.max)}.`;
+        const otro = el.dataset.after && el.form?.elements[el.dataset.after]?.value;
+        if (otro && v <= otro) return el.dataset.afterMsg || 'Debe ser posterior a la fecha de inicio.';
+        return '';
+      }
+      if (el.type === 'number') {
+        if (!v.trim()) return el.required ? (el.validity.badInput ? 'Ingrese un número válido.' : 'Este campo es obligatorio.') : '';
+        const n = Number(v);
+        if (!isFinite(n)) return 'Ingrese un número válido.';
+        if (el.min !== '' && n < Number(el.min)) return `El valor mínimo permitido es ${el.min}.`;
+        if (el.max !== '' && n > Number(el.max)) return `El valor máximo permitido es ${el.max}.`;
+        const paso = el.step && el.step !== 'any' ? Number(el.step) : 1;
+        if (Math.abs(Math.round(n / paso) * paso - n) > 1e-6) return paso >= 1 ? 'Ingrese un número entero.' : 'Use como máximo 2 decimales.';
+        return '';
+      }
+      if (!v.trim()) return el.required ? 'Este campo es obligatorio.' : '';
+      const regla = reglaDe(el);
+      if (regla) { const m = regla.validar(v.trim(), el); if (m) return m; }
+      if (el.minLength > 0 && v.trim().length < el.minLength) return `Escriba al menos ${el.minLength} caracteres.`;
+      if (el.pattern && !new RegExp(`^(?:${el.pattern})$`).test(v)) return el.title || 'El formato ingresado no es válido.';
+      const d = el.dataset.differs;
+      if (d && el.form?.elements[d] && el.form.elements[d].value === v) return el.dataset.differsMsg || 'No puede ser igual al otro campo.';
+      return '';
+    }
+
+    const validable = el => {
+      if (el.disabled || el.readOnly || el.closest('[hidden]')) return false;
+      if (el.tagName === 'SELECT' || el.tagName === 'TEXTAREA') return true;
+      return el.tagName === 'INPUT' && !['hidden', 'button', 'submit', 'reset', 'file', 'color', 'checkbox', 'radio', 'image'].includes(el.type);
+    };
+    const controles = form => Array.from(form.querySelectorAll('input,select,textarea')).filter(validable);
+
+    function validarForm(form) {
+      let primero = null;
+      controles(form).forEach(el => {
+        el.dataset.touched = '1';
+        const m = mensaje(el);
+        mostrar(el, m);
+        if (m && !primero) primero = el;
+      });
+      return primero;
+    }
+
+    /* ---------- manejadores globales ---------- */
+    function aplicarLimpieza(el, regla) {
+      const antes = el.value;
+      const despues = regla.limpiar(antes, el);
+      if (antes === despues) return false;
+      let pos = null;
+      try { pos = el.selectionStart; } catch (_) { /* type=email no expone selección */ }
+      el.value = despues;
+      if (pos !== null) {
+        const nueva = regla.limpiar(antes.slice(0, pos), el).length;
+        try { el.setSelectionRange(nueva, nueva); } catch (_) { /* sin selección */ }
+      }
+      // si solo cambiaron espacios sobrantes, no molestar con el aviso
+      return antes.replace(/\s/g, '') !== despues.replace(/\s/g, '');
+    }
+    function onInput(e) {
+      const el = e.target;
+      if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) || e.isComposing) return;
+      const regla = reglaDe(el);
+      if (regla && el.type !== 'number' && el.type !== 'date') {
+        if (aplicarLimpieza(el, regla)) aviso(el, regla.hint);
+      }
+      if (el.dataset.touched) {
+        const m = mensaje(el);
+        const p = errorDe(el);
+        if (m || (p && !p.dataset.flash)) mostrar(el, m);
+      }
+    }
+    function onKeydown(e) {
+      const el = e.target;
+      if (!(el instanceof HTMLInputElement) || el.type !== 'number') return;
+      const paso = el.step && el.step !== 'any' ? Number(el.step) : 1;
+      if (['e', 'E', '+', '-'].includes(e.key) || (paso >= 1 && (e.key === '.' || e.key === ','))) e.preventDefault();
+    }
+    // Si el usuario está pulsando un botón (Guardar / Cancelar), no se valida al salir del campo:
+    // el mensaje desplazaría el botón y el clic se perdería.
+    let presionando = false;
+    document.addEventListener('pointerdown', e => { presionando = !!e.target.closest?.('button, a, [role=button]'); }, true);
+    document.addEventListener('pointerup', () => setTimeout(() => { presionando = false; }, 0), true);
+    document.addEventListener('pointercancel', () => { presionando = false; }, true);
+
+    function onFocusOut(e) {
+      if (presionando) return;
+      const el = e.target;
+      if (!el.form && !el.closest?.('.est-picker') && el.type !== 'search') return;
+      if (!(el instanceof HTMLInputElement || el instanceof HTMLSelectElement || el instanceof HTMLTextAreaElement)) return;
+      if (!validable(el) || el.closest('.est-picker[data-filtro]')) return;
+      // al escribir en un buscador de formulario y salir sin elegir de la lista, se avisa
+      el.dataset.touched = '1';
+      if (el.type === 'search') return;
+      mostrar(el, mensaje(el));
+    }
+    function onChange(e) {
+      const el = e.target;
+      if (el instanceof HTMLInputElement && el.type === 'hidden') {          // se eligió una opción del buscador
+        const txt = el.closest('.est-picker')?.querySelector('.est-picker-input');
+        if (txt && !el.closest('.est-picker[data-filtro]') && txt.dataset.touched) mostrar(txt, mensaje(txt));
+        return;
+      }
+      if (!el.dataset || !el.dataset.touched) return;
+      mostrar(el, mensaje(el));
+      // un cambio en un campo puede invalidar a otro dependiente (p. ej. fecha fin / fecha inicio)
+      el.form?.querySelectorAll('[data-after],[data-differs]').forEach(o => { if (o !== el && o.dataset.touched) mostrar(o, mensaje(o)); });
+    }
+    function onSubmit(e) {
+      const form = e.target;
+      if (!(form instanceof HTMLFormElement) || form.hasAttribute('data-sin-validar')) return;
+      if (form.__reenviando) return;                    // segunda pasada (ya validada y con aviso de carga)
+      if (form.__enCarga) { e.preventDefault(); e.stopImmediatePropagation(); return; }   // doble clic
+      const malo = validarForm(form);
+      if (malo) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        malo.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        try { malo.focus({ preventScroll: true }); } catch (_) { /* sin foco */ }
+        UI.toast('Revise los campos marcados en rojo.', 'warning');
+        return;
+      }
+      if (form.hasAttribute('data-sin-carga') || typeof form.requestSubmit !== 'function') return;
+      // Formulario válido: mostrar "Guardando…", dejar que se dibuje y recién entonces ejecutar el guardado.
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      const sub = e.submitter && e.submitter.form === form ? e.submitter : undefined;
+      form.__enCarga = true;
+      Cargando.mostrar(form.dataset.cargando || 'Guardando…');
+      Cargando.pintar().then(() => {
+        form.__reenviando = true;
+        try { form.requestSubmit(sub); }
+        finally { form.__reenviando = false; form.__enCarga = false; Cargando.ocultar(); }
+      });
+    }
+
+    /* ---------- preparación de formularios / buscadores nuevos ---------- */
+    function scan() {
+      document.querySelectorAll('form:not([data-fv])').forEach(form => {
+        form.dataset.fv = '1';
+        form.noValidate = true;                 // los errores se muestran en pantalla, no con globos del navegador
+        form.querySelectorAll('input,textarea').forEach(el => {
+          if (el.type === 'date') {
+            if (!el.min) el.min = fechaHaceAnios(10);
+            if (!el.max) { const d = new Date(); d.setFullYear(d.getFullYear() + 10); el.max = toISO(d); }
+          } else if (['text', 'email', 'tel', 'password'].includes(el.type) && el.maxLength < 0) el.maxLength = 80;
+          else if (el.tagName === 'TEXTAREA' && el.maxLength < 0) el.maxLength = 300;
+          const r = reglaDe(el);
+          if (r === REGLAS.dni || r === REGLAS.celular || r === REGLAS.operacion) el.inputMode = 'numeric';
+          if (el.type !== 'password') el.autocomplete = 'off';
+        });
+      });
+      // Ojo para mostrar/ocultar contraseña en cada campo de contraseña (la pantalla de acceso tiene el suyo).
+      document.querySelectorAll('input[type=password]:not([data-ojo])').forEach(el => {
+        el.dataset.ojo = '1';
+        if (el.closest('#login-form') || el.closest('.pw-wrap')) return;
+        const caja = document.createElement('div');
+        caja.className = 'pw-wrap';
+        el.parentNode.insertBefore(caja, el);
+        caja.appendChild(el);
+        el.classList.add('con-ojo');
+        const b = document.createElement('button');
+        b.type = 'button'; b.className = 'pw-toggle'; b.tabIndex = -1;
+        b.setAttribute('aria-label', 'Mostrar contraseña'); b.setAttribute('aria-pressed', 'false'); b.title = 'Mostrar contraseña';
+        b.innerHTML = '<i class="fa-solid fa-eye"></i>';
+        b.addEventListener('mousedown', e => e.preventDefault());      // el campo no pierde el foco
+        b.addEventListener('click', () => {
+          const ver = el.type === 'password';
+          el.type = ver ? 'text' : 'password';
+          b.setAttribute('aria-pressed', String(ver));
+          b.setAttribute('aria-label', ver ? 'Ocultar contraseña' : 'Mostrar contraseña'); b.title = b.getAttribute('aria-label');
+          b.firstElementChild.className = 'fa-solid ' + (ver ? 'fa-eye-slash' : 'fa-eye');
+        });
+        caja.appendChild(b);
+      });
+      document.querySelectorAll('input[type=search]:not([data-fv]),.est-picker-input:not([data-fv])').forEach(el => {
+        el.dataset.fv = '1'; el.maxLength = 40; el.autocomplete = 'off'; el.spellcheck = false;
+      });
+    }
+
+    function instalar() {
+      if (document.getElementById('login-form')) return;       // la pantalla de acceso tiene su propia lógica
+      document.addEventListener('input', onInput, true);
+      document.addEventListener('keydown', onKeydown, true);
+      document.addEventListener('focusout', onFocusOut, true);
+      document.addEventListener('change', onChange, true);
+      document.addEventListener('submit', onSubmit, true);
+    }
+    return { instalar, scan, mensaje, validarForm, mostrar, REGLAS };
+  })();
+
+  /* ------------------------------------------------------------------
+     Paginación automática de tablas (10 filas por página)
+     Cualquier tabla .table con más de 10 filas recibe su barra de páginas.
+     Para excluir una tabla (si la pagina su propia vista) se le agrega la clase "no-auto-page".
+     ------------------------------------------------------------------ */
+  const Pager = (() => {
+    const POR_PAGINA = 10;
+    const estado = new Map();                    // clave de tabla -> { page, total }
+
+    function clave(tabla) {
+      const modal = tabla.closest('#pt-modal');
+      const raiz = modal || document.getElementById('view-root') || document;
+      const ambito = modal ? 'm:' + (modal.querySelector('.modal-title')?.textContent || '') : 'v:' + (location.hash.split('?')[0] || '#');
+      return ambito + '#' + Array.from(raiz.querySelectorAll('table.table')).indexOf(tabla);
+    }
+    function numeros(pag, paginas) {
+      const out = [];
+      for (let i = 1; i <= paginas; i++) {
+        if (i === 1 || i === paginas || Math.abs(i - pag) <= 1) out.push(i);
+        else if (out[out.length - 1] !== '…') out.push('…');
+      }
+      return out;
+    }
+    function aplicar(tabla) {
+      const filas = Array.from(tabla.tBodies[0]?.rows || []);
+      const total = filas.length;
+      const paginas = Math.ceil(total / POR_PAGINA);
+      if (paginas <= 1) return;
+      const k = clave(tabla);
+      const prev = estado.get(k);
+      let page = prev && prev.total === total ? Math.min(prev.page, paginas) : 1;
+      const wrap = tabla.closest('.table-wrap') || tabla;
+      const barra = document.createElement('div');
+      barra.className = 'pager no-print';
+      wrap.after(barra);
+
+      const pintar = () => {
+        const ini = (page - 1) * POR_PAGINA;
+        filas.forEach((f, i) => f.classList.toggle('pg-hidden', i < ini || i >= ini + POR_PAGINA));
+        estado.set(k, { page, total });
+        barra.innerHTML = `
+          <p class="pager-info">Mostrando <b>${ini + 1}–${Math.min(total, ini + POR_PAGINA)}</b> de <b>${total}</b> registros</p>
+          <div class="pager-nav">
+            <button type="button" class="pg-btn" data-pg="${page - 1}" ${page === 1 ? 'disabled' : ''}><i class="fa-solid fa-chevron-left"></i><span>Anterior</span></button>
+            ${numeros(page, paginas).map(n => n === '…'
+              ? '<span class="pg-gap">…</span>'
+              : `<button type="button" class="pg-btn pg-num${n === page ? ' active' : ''}" data-pg="${n}" ${n === page ? 'aria-current="page"' : ''}>${n}</button>`).join('')}
+            <button type="button" class="pg-btn" data-pg="${page + 1}" ${page === paginas ? 'disabled' : ''}><span>Siguiente</span><i class="fa-solid fa-chevron-right"></i></button>
+          </div>`;
+      };
+      barra.addEventListener('click', e => {
+        const b = e.target.closest('[data-pg]');
+        if (!b || b.disabled) return;
+        page = Math.min(paginas, Math.max(1, parseInt(b.dataset.pg, 10) || 1));
+        pintar();
+        if (wrap.getBoundingClientRect().top < 60) wrap.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      });
+      pintar();
+    }
+    function scan() {
+      document.querySelectorAll('table.table:not([data-pg]):not(.no-auto-page)').forEach(t => {
+        if (t.closest('.receipt,.no-auto-page')) return;
+        t.dataset.pg = '1';
+        aplicar(t);
+      });
+    }
+    /** Devuelve una copia del HTML de un contenedor con todas las filas visibles y sin barras de página (para imprimir). */
+    function sinPaginar(contenedor) {
+      const c = contenedor.cloneNode(true);
+      c.querySelectorAll('.pager').forEach(p => p.remove());
+      c.querySelectorAll('.pg-hidden').forEach(f => f.classList.remove('pg-hidden'));
+      return c.innerHTML;
+    }
+    return { scan, sinPaginar, POR_PAGINA };
+  })();
+
+  /* ------------------------------------------------------------------
+     Exportación real a Excel (.xlsx) con plantilla corporativa (ExcelJS)
+     ------------------------------------------------------------------ */
+  const excel = {
+    disponible: () => !!global.ExcelJS,
+    /** 'AAAA-MM-DD' -> Date (UTC) para que Excel la guarde como fecha real. */
+    fecha(iso) {
+      if (!iso) return null;
+      const [y, m, d] = String(iso).slice(0, 10).split('-').map(Number);
+      return new Date(Date.UTC(y, m - 1, d));
+    },
+    /**
+     * columnas: [{ titulo, ancho, tipo: 'texto'|'codigo'|'fecha'|'dinero'|'entero' }]
+     * filas: arreglo de arreglos (las fechas como Date); totales: { etiqueta, columnas: [{ idx, tipo: 'suma'|'conteo', valor }] }
+     * resumen: { titulo, encabezados: [...], tipos: [...], filas: [[...]] } (segunda hoja, opcional)
+     */
+    async generar({ hoja, titulo, periodo, usuario, columnas, filas, totales, resumen }) {
+      const XL = global.ExcelJS;
+      const NAVY = 'FF1F2937', AZUL = 'FF2563EB', ZEBRA = 'FFF9FAFB', LINEA = 'FFE5E7EB';
+      const FORMATO = { fecha: 'dd/mm/yyyy', dinero: '"S/" #,##0.00', entero: '0', texto: '@', codigo: '@' };
+      const borde = { style: 'thin', color: { argb: LINEA } };
+      const bordes = { top: borde, left: borde, bottom: borde, right: borde };
+      const n = columnas.length;
+      const HEADER_ROW = 7;
+
+      const wb = new XL.Workbook();
+      wb.creator = ACADEMIA.nombre; wb.created = new Date();
+      const ws = wb.addWorksheet(hoja, {
+        views: [{ state: 'frozen', ySplit: HEADER_ROW, showGridLines: false }],
+        pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, margins: { left: .4, right: .4, top: .6, bottom: .6, header: .3, footer: .3 } }
+      });
+      ws.columns = columnas.map(c => ({ width: c.ancho || 16 }));
+
+      const linea = (fila, texto, est = {}) => {
+        ws.mergeCells(fila, 1, fila, n);
+        const c = ws.getCell(fila, 1);
+        c.value = texto;
+        c.font = { name: 'Calibri', size: est.size || 10, bold: !!est.bold, italic: !!est.italic, color: { argb: est.color || 'FF475569' } };
+        c.alignment = { vertical: 'middle', horizontal: est.align || 'left' };
+        if (est.alto) ws.getRow(fila).height = est.alto;
+      };
+      linea(1, ACADEMIA.nombre.toUpperCase(), { size: 17, bold: true, color: NAVY, alto: 30 });
+      linea(2, `RUC ${ACADEMIA.ruc}  ·  ${ACADEMIA.direccion}  ·  Tel. ${ACADEMIA.telefono}`, { size: 9, color: 'FF6B7280' });
+      linea(3, titulo, { size: 13, bold: true, color: AZUL, alto: 22 });
+      linea(4, `Periodo: ${periodo}`, { size: 10, bold: true, color: 'FF1F2937' });
+      linea(5, `Fecha de emisión: ${new Date().toLocaleDateString('es-PE')}   ·   Generado por: ${usuario}`, { size: 9, color: 'FF6B7280' });
+      ws.mergeCells(6, 1, 6, n);                                   // franja de color separadora
+      ws.getCell(6, 1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: AZUL } };
+      ws.getRow(6).height = 4;
+
+      const cab = ws.getRow(HEADER_ROW);
+      columnas.forEach((c, i) => {
+        const cell = cab.getCell(i + 1);
+        cell.value = c.titulo;
+        cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FFFFFFFF' } };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: NAVY } };
+        cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+        cell.border = bordes;
+      });
+      cab.height = 26;
+
+      filas.forEach((f, r) => {
+        const row = ws.getRow(HEADER_ROW + 1 + r);
+        f.forEach((valor, i) => {
+          const c = columnas[i], cell = row.getCell(i + 1);
+          cell.value = valor;
+          cell.numFmt = FORMATO[c.tipo] || '@';
+          cell.font = { name: 'Calibri', size: 10 };
+          cell.border = bordes;
+          cell.alignment = { vertical: 'middle', horizontal: c.tipo === 'dinero' ? 'right' : (['fecha', 'entero', 'codigo'].includes(c.tipo) ? 'center' : 'left') };
+          if (r % 2 === 1) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: ZEBRA } };
+        });
+      });
+
+      const primera = HEADER_ROW + 1, ultima = HEADER_ROW + filas.length;
+      let siguiente = ultima + 1;
+      if (totales && filas.length) {
+        const row = ws.getRow(siguiente);
+        const idxs = totales.columnas.map(c => c.idx);
+        const hasta = Math.min(...idxs) - 1;
+        if (hasta >= 1) {
+          if (hasta >= 2) ws.mergeCells(siguiente, 1, siguiente, hasta);
+          const l = row.getCell(1);
+          l.value = totales.etiqueta;
+          l.font = { name: 'Calibri', size: 10, bold: true, color: NAVY };
+          l.alignment = { horizontal: 'right', vertical: 'middle' };
+        }
+        for (let i = 1; i <= n; i++) {
+          const cell = row.getCell(i);
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8F0FE' } };
+          cell.border = { top: { style: 'medium', color: { argb: NAVY } }, bottom: borde, left: borde, right: borde };
+        }
+        totales.columnas.forEach(t => {
+          const letra = ws.getColumn(t.idx).letter;
+          const cell = row.getCell(t.idx);
+          cell.value = { formula: `${t.tipo === 'conteo' ? 'COUNTA' : 'SUM'}(${letra}${primera}:${letra}${ultima})`, result: t.valor };
+          cell.numFmt = t.tipo === 'conteo' ? '0' : FORMATO.dinero;
+          cell.font = { name: 'Calibri', size: 11, bold: true, color: NAVY };
+          cell.alignment = { horizontal: t.tipo === 'conteo' ? 'center' : 'right', vertical: 'middle' };
+        });
+        row.height = 22;
+        siguiente++;
+      }
+      ws.mergeCells(siguiente + 1, 1, siguiente + 1, n);
+      const nota = ws.getCell(siguiente + 1, 1);
+      nota.value = 'Documento generado automáticamente por el sistema PLUSTWENTY. Uso interno; no constituye comprobante de pago tributario.';
+      nota.font = { name: 'Calibri', size: 8, italic: true, color: { argb: 'FF9CA3AF' } };
+
+      if (filas.length) ws.autoFilter = { from: { row: HEADER_ROW, column: 1 }, to: { row: ultima, column: n } };
+      ws.pageSetup.printTitlesRow = `${HEADER_ROW}:${HEADER_ROW}`;
+      ws.headerFooter.oddFooter = '&L&8PLUSTWENTY · Academia Preuniversitaria&C&8Página &P de &N&R&8&D';
+
+      if (resumen) {
+        const rs = wb.addWorksheet('Resumen', { views: [{ showGridLines: false }] });
+        const m = resumen.encabezados.length;
+        rs.columns = resumen.encabezados.map((_, i) => ({ width: i === 0 ? 34 : 18 }));
+        rs.mergeCells(1, 1, 1, m);
+        rs.getCell(1, 1).value = ACADEMIA.nombre.toUpperCase();
+        rs.getCell(1, 1).font = { name: 'Calibri', size: 15, bold: true, color: { argb: NAVY } };
+        rs.getRow(1).height = 26;
+        rs.mergeCells(2, 1, 2, m);
+        rs.getCell(2, 1).value = `${resumen.titulo}  ·  Periodo: ${periodo}`;
+        rs.getCell(2, 1).font = { name: 'Calibri', size: 11, bold: true, color: { argb: AZUL } };
+        const hr = rs.getRow(4);
+        resumen.encabezados.forEach((h, i) => {
+          const c = hr.getCell(i + 1);
+          c.value = h;
+          c.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FFFFFFFF' } };
+          c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: NAVY } };
+          c.alignment = { horizontal: 'center', vertical: 'middle' };
+          c.border = bordes;
+        });
+        hr.height = 22;
+        resumen.filas.forEach((f, r) => {
+          const row = rs.getRow(5 + r);
+          f.forEach((v, i) => {
+            const c = row.getCell(i + 1);
+            c.value = v;
+            c.numFmt = FORMATO[resumen.tipos[i]] || '@';
+            c.font = { name: 'Calibri', size: 10, bold: !!resumen.ultimaEsTotal && r === resumen.filas.length - 1 };
+            c.border = bordes;
+            c.alignment = { horizontal: i === 0 ? 'left' : (resumen.tipos[i] === 'dinero' ? 'right' : 'center') };
+            if (r % 2 === 1) c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: ZEBRA } };
+          });
+        });
+      }
+
+      const buffer = await wb.xlsx.writeBuffer();
+      return new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    }
+  };
+
+  /* Automatismos: preparan formularios nuevos y paginan tablas nuevas cada vez que cambia el DOM. */
+  function iniciarAutomatismos() {
+    Forms.instalar();
+    // El observador corre como microtarea justo después de cada cambio del DOM (antes de que el usuario pueda hacer clic).
+    const correr = () => { Forms.scan(); Pager.scan(); };
+    new MutationObserver(correr).observe(document.body, { childList: true, subtree: true });
+    correr();
+  }
+  iniciarAutomatismos();
+
+  /* ------------------------------------------------------------------
      Inicialización y API pública
      ------------------------------------------------------------------ */
   // Errores de la API: se muestran en una alerta (o se redirige al login si la sesión expiró)
@@ -801,7 +1476,7 @@
   global.PT = {
     ACADEMIA, MESES, LOGO_SVG,
     db, finance, auth, audit, notify, notifyEstudiante, nextCounter, notificaciones, revisionPagos, registroMatriculas, registroEstudiantes,
-    UI, Shell, docs, validators, resetDemo, fakeVoucher,
+    UI, Shell, docs, validators, resetDemo, fakeVoucher, RULES, Pila, Cola, Forms, Pager, excel, Cargando,
     fmt: { money, date: fmtDate, dateTime: fmtDateTime, timeAgo, esc, initials, today, nowISO, addDays, daysBetween, round2, sum, parseDate, toISO, pad, norm, debounce, uid, randomPassword, MESES }
   };
 })(window);
