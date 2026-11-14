@@ -203,12 +203,13 @@
       // Saldo total pendiente por cobrar (según regla de negocio)
       const saldoTotalPendiente = fmt.sum(pensiones, p => {
         const inf = finance.info(p, pagos);
-        return inf.saldo;
+        return inf.saldo + inf.mora;
       });
+      const moraTotal = fmt.sum(pensiones, p => finance.info(p, pagos).mora);
 
       // Morosidad
       const vencidas = pensiones.map(p => finance.info(p, pagos)).filter(p => p.estado === 'Vencida');
-      const montoVencido = fmt.sum(vencidas, p => p.saldo);
+      const montoVencido = fmt.sum(vencidas, p => p.saldo + p.mora);
 
       // Últimos 5 pagos reportados
       const ultimosPagos = pagos.slice().sort((a, b) => b.fechaReporte.localeCompare(a.fechaReporte)).slice(0, 6);
@@ -220,7 +221,7 @@
             ${UI.kpi({ icon: 'fa-user-graduate', label: 'Estudiantes Registrados', value: estudiantes.length, hint: `${estudiantes.filter(e => e.activo).length} activos`, tone: 'navy' })}
             ${UI.kpi({ icon: 'fa-id-card-clip', label: 'Matrículas Activas', value: matriculasActivas, hint: `de ${matriculas.length} registradas`, tone: 'blue' })}
             ${UI.kpi({ icon: 'fa-circle-dollar-to-slot', label: 'Ingresos Confirmados', value: fmt.money(totalIngresos), hint: 'Pagos aprobados en caja/bancos', tone: 'green' })}
-            ${UI.kpi({ icon: 'fa-hand-holding-dollar', label: 'Saldo por Cobrar', value: fmt.money(saldoTotalPendiente), hint: `${vencidas.length} cuotas vencidas (${fmt.money(montoVencido)})`, tone: 'amber' })}
+            ${UI.kpi({ icon: 'fa-hand-holding-dollar', label: 'Saldo por Cobrar', value: fmt.money(saldoTotalPendiente), hint: `${vencidas.length} cuotas vencidas (${fmt.money(montoVencido)})${moraTotal > 0 ? ` · incl. mora ${fmt.money(moraTotal)}` : ''}`, tone: 'amber' })}
           </div>
 
           ${pagosPendientes.length > 0 ? `
@@ -288,7 +289,7 @@
                   `<span class="text-xs font-semibold">${fmt.date(p.fechaPago)}</span>`,
                   `<div><p class="font-bold text-slate-800">${fmt.esc(est ? `${est.nombres} ${est.apellidos}` : '—')}</p><p class="text-xs text-slate-400">DNI ${est?.dni || ''}</p></div>`,
                   UI.method(p.metodo),
-                  `<code class="text-xs bg-slate-100 px-2 py-1 rounded">${fmt.esc(p.numeroOperacion)}</code>`,
+                  `<div><code class="text-xs bg-slate-100 px-2 py-1 rounded">${fmt.esc(p.numeroOperacion)}</code>${moraChip(p) ? `<div>${moraChip(p)}</div>` : ''}</div>`,
                   `<span class="font-extrabold ${p.estado === 'Aprobado' ? 'text-emerald-600' : 'text-slate-800'}">${fmt.money(p.monto)}</span>`,
                   UI.badge(p.estado),
                   `<div class="actions">
@@ -406,6 +407,12 @@
     }
   };
 
+  /* Etiqueta "incluye mora": el portal del estudiante la deja escrita en `observacion` del pago. */
+  function moraChip(p) {
+    const m = String((p && p.observacion) || '').match(/Incluye mora de (S\/\s?[\d.,]+)/);
+    return m ? `<span class="ocr-chip mora-chip" title="El monto incluye recargo por pago atrasado"><i class="fa-solid fa-clock"></i> incl. mora ${m[1]}</span>` : '';
+  }
+
   /* Acciones compartidas de pagos (utilizadas en Dashboard y Verificación de Pagos) */
   const Actions = {
     async aprobarPago(pagoId) {
@@ -415,7 +422,7 @@
       const est = db.find('estudiantes', pg.estudianteId);
       const ok = await UI.confirm({
         title: '¿Aprobar pago reportado?',
-        html: `Se validará el abono de <b>${fmt.money(pg.monto)}</b> por método <b>${pg.metodo}</b> (Op. ${pg.numeroOperacion}) para <b>${fmt.esc(est?.nombres || '')} ${fmt.esc(est?.apellidos || '')}</b>.<br><br>Se emitirá el recibo interno y se actualizará el saldo de la obligación.`,
+        html: `Se validará el abono de <b>${fmt.money(pg.monto)}</b> por método <b>${pg.metodo}</b> (Op. ${pg.numeroOperacion}) para <b>${fmt.esc(est?.nombres || '')} ${fmt.esc(est?.apellidos || '')}</b>.${moraChip(pg) ? `<br><br>${moraChip(pg)}` : ''}<br><br>Se emitirá el recibo interno y se actualizará el saldo de la obligación.`,
         confirmText: 'Sí, aprobar pago',
         icon: 'question'
       });
@@ -1111,7 +1118,7 @@
           <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div class="mini-stat"><p class="ms-label">Total Exigible</p><p class="ms-value text-slate-800">${fmt.money(res.exigible)}</p></div>
             <div class="mini-stat"><p class="ms-label">Total Pagado</p><p class="ms-value text-emerald-600">${fmt.money(res.totalPagado)}</p></div>
-            <div class="mini-stat"><p class="ms-label">Saldo Pendiente</p><p class="ms-value ${res.saldo > 0 ? 'text-amber-600' : 'text-slate-600'}">${fmt.money(res.saldo)}</p></div>
+            <div class="mini-stat"><p class="ms-label">Saldo Pendiente</p><p class="ms-value ${res.saldoTotal > 0 ? 'text-amber-600' : 'text-slate-600'}">${fmt.money(res.saldoTotal)}</p>${res.mora > 0 ? `<p class="mora-tag">incl. mora ${fmt.money(res.mora)}</p>` : ''}</div>
             <div class="mini-stat"><p class="ms-label">En Revisión</p><p class="ms-value text-blue-600">${fmt.money(res.enRevision)}</p></div>
           </div>
 
@@ -1134,7 +1141,7 @@
                 fmt.money(p.importe),
                 p.descuento > 0 ? `<span class="text-xs text-emerald-600">-S/ ${p.descuento}</span>` : '—',
                 `<span class="text-emerald-700 font-bold">${fmt.money(p.abonado)}</span>`,
-                `<span class="font-extrabold ${p.saldo > 0 ? 'text-red-600' : 'text-slate-500'}">${fmt.money(p.saldo)}</span>`,
+                UI.saldoMora(p),
                 UI.badge(p.estado)
               ])
             })}
@@ -1267,7 +1274,7 @@
               fmt.money(p.importe),
               p.descuento > 0 ? `<span class="text-xs font-bold text-emerald-600" title="${fmt.esc(p.motivoDescuento)}">-S/ ${p.descuento}</span>` : '—',
               `<span class="font-bold text-emerald-700">${fmt.money(p.abonado)}</span>`,
-              `<span class="font-extrabold ${p.saldo > 0 ? 'text-red-600' : 'text-slate-400'}">${fmt.money(p.saldo)}</span>`,
+              UI.saldoMora(p),
               UI.badge(p.estado),
               `<div class="actions">
                 <button class="btn btn-secondary btn-sm" data-pen-descuento="${p.id}" title="Aplicar / Editar Descuento"><i class="fa-solid fa-tag"></i></button>
@@ -1571,7 +1578,7 @@
         </div>`,
         `<span class="font-semibold text-slate-700">${fmt.esc(pen?.concepto || 'Cuota')}</span>`,
         UI.method(p.metodo),
-        `<code class="text-xs bg-slate-100 px-2 py-1 rounded font-bold">${fmt.esc(p.numeroOperacion)}</code>`,
+        `<div><code class="text-xs bg-slate-100 px-2 py-1 rounded font-bold">${fmt.esc(p.numeroOperacion)}</code>${moraChip(p) ? `<div>${moraChip(p)}</div>` : ''}</div>`,
         p.comprobante ? `
           <button class="flex items-center gap-2 text-xs font-semibold text-brand hover:underline" data-view-voucher="${p.id}">
             <img src="${p.comprobante}" class="w-8 h-8 rounded object-cover border" alt="Voucher">
@@ -1886,17 +1893,26 @@
           return;
         }
         selP.innerHTML = '<option value="">Seleccione cuota...</option>' +
-          pens.map(p => `<option value="${p.id}" data-saldo="${p.saldo}">${fmt.esc(p.concepto)} - Saldo: S/ ${p.saldo.toFixed(2)}</option>`).join('');
+          pens.map(p => `<option value="${p.id}">${fmt.esc(p.concepto)} - Saldo: S/ ${(p.saldo + p.mora).toFixed(2)}${p.mora > 0 ? ` (incl. mora S/ ${p.mora.toFixed(2)})` : ''}</option>`).join('');
       });
 
-      selP.addEventListener('change', () => {
-        const opt = selP.selectedOptions[0];
-        if (opt && opt.dataset.saldo) {
-          inM.value = opt.dataset.saldo;
-          inM.max = opt.dataset.saldo;                         // no se puede cobrar más que el saldo
-          document.getElementById('ef-monto-hint').textContent = `Máximo a cobrar: S/ ${Number(opt.dataset.saldo).toFixed(2)} (saldo de la cuota).`;
-        } else { inM.value = ''; inM.removeAttribute('max'); }
-      });
+      // Máximo a cobrar = saldo + mora calculada hasta la fecha del cobro.
+      const fechaCobro = () => { const f = document.querySelector('#form-pago-efectivo [name=fechaPago]')?.value; return f && f <= fmt.today() ? f : fmt.today(); };
+      const actualizarMax = (reiniciar) => {
+        const pen = selP.value ? db.find('pensiones', selP.value) : null;
+        const hint = document.getElementById('ef-monto-hint');
+        if (!pen) { inM.value = ''; inM.removeAttribute('max'); return; }
+        const inf = finance.info(pen, db.all('pagos'));
+        const f = fechaCobro();
+        const mora = inf.moraFija ? inf.mora : finance.moraA(inf, f);
+        const max = finance.disponibleA(inf, f);
+        if (reiniciar || !inM.value) inM.value = max.toFixed(2);
+        inM.max = max.toFixed(2);                                // no se puede cobrar más que saldo + mora
+        hint.innerHTML = `Máximo a cobrar: S/ ${max.toFixed(2)} (saldo de la cuota${mora > 0 ? ` + mora de S/ ${mora.toFixed(2)}` : ''}).` +
+          (mora > 0 ? ` <button type="button" class="mora-eye" data-mora="${inf.id}" data-mora-fecha="${f}" title="Ver detalle de la mora"><i class="fa-solid fa-eye"></i></button>` : '');
+      };
+      selP.addEventListener('change', () => actualizarMax(true));
+      document.querySelector('#form-pago-efectivo [name=fechaPago]')?.addEventListener('change', () => actualizarMax(true));
 
       document.getElementById('form-pago-efectivo').addEventListener('submit', e => {
         e.preventDefault();
@@ -2097,13 +2113,14 @@
             return;
           }
 
-          const deudaTotal = fmt.sum(vencidas, p => p.saldo);
+          const deudaTotal = fmt.sum(vencidas, p => p.saldo + p.mora);
+          const moraTotalRep = fmt.sum(vencidas, p => p.mora);
           area.innerHTML = `
             <div class="space-y-4">
               <div class="flex items-center justify-between">
                 <div>
                   <h4 class="font-extrabold text-red-600 text-lg">Reporte de Morosidad y Pensiones Vencidas</h4>
-                  <p class="text-xs text-slate-500">Periodo: <b>${periodLabel}</b> · Deuda total vencida: <b>${fmt.money(deudaTotal)}</b> en ${vencidas.length} cuotas</p>
+                  <p class="text-xs text-slate-500">Periodo: <b>${periodLabel}</b> · Deuda total vencida: <b>${fmt.money(deudaTotal)}</b> (incluye mora de <b>${fmt.money(moraTotalRep)}</b>) en ${vencidas.length} cuotas</p>
                 </div>
               </div>
               ${UI.table({
@@ -2114,7 +2131,9 @@
                   { label: 'Concepto' },
                   { label: 'Fecha Vence' },
                   { label: 'Días Atraso', cls: 'num' },
-                  { label: 'Saldo Pendiente', cls: 'num' }
+                  { label: 'Saldo', cls: 'num' },
+                  { label: 'Mora', cls: 'num' },
+                  { label: 'Total a Pagar', cls: 'num' }
                 ],
                 rows: vencidas.map(p => {
                   const est = db.find('estudiantes', p.estudianteId);
@@ -2125,10 +2144,12 @@
                     fmt.esc(p.concepto),
                     fmt.date(p.fechaVencimiento),
                     `<span class="font-bold text-red-600">${p.diasAtraso} días</span>`,
-                    `<span class="font-extrabold text-red-600">${fmt.money(p.saldo)}</span>`
+                    `<span class="font-bold text-slate-700">${fmt.money(p.saldo)}</span>`,
+                    p.mora > 0 ? `<span class="font-bold text-amber-600">+ ${fmt.money(p.mora)}</span> <button type="button" class="mora-eye" data-mora="${p.id}" title="Ver cómo se calculó la mora"><i class="fa-solid fa-eye"></i></button>` : '—',
+                    `<span class="font-extrabold text-red-600">${fmt.money(p.saldo + p.mora)}</span>`
                   ];
                 }),
-                foot: `<tfoot><tr><td colspan="6" class="text-right">TOTAL DEUDA VENCIDA (${periodLabel}):</td><td class="num font-extrabold text-red-600">${fmt.money(deudaTotal)}</td></tr></tfoot>`
+                foot: `<tfoot><tr><td colspan="6" class="text-right">TOTAL DEUDA VENCIDA (${periodLabel}):</td><td class="num font-bold">${fmt.money(fmt.sum(vencidas, p => p.saldo))}</td><td class="num font-bold text-amber-600">${fmt.money(moraTotalRep)}</td><td class="num font-extrabold text-red-600">${fmt.money(deudaTotal)}</td></tr></tfoot>`
               })}
             </div>
           `;
@@ -2220,11 +2241,13 @@
             resumen: { titulo: 'Resumen de ingresos por método de pago', encabezados: ['Método de pago', 'N° de pagos', 'Total cobrado'], tipos: ['texto', 'entero', 'dinero'], filas: filasRes, ultimaEsTotal: true }
           };
         } else if (tp === 'morosidad') {
-          const total = fmt.sum(items, p => p.saldo);
+          const total = fmt.sum(items, p => p.saldo + p.mora);
+          const totalSaldo = fmt.sum(items, p => p.saldo);
+          const totalMora = fmt.sum(items, p => p.mora);
           const tramos = [['De 1 a 30 días', 1, 30], ['De 31 a 60 días', 31, 60], ['De 61 a 90 días', 61, 90], ['Más de 90 días', 91, Infinity]];
           const filasRes = tramos.map(([l, a, b]) => {
             const g = items.filter(p => p.diasAtraso >= a && p.diasAtraso <= b);
-            return [l, g.length, fmt.sum(g, p => p.saldo)];
+            return [l, g.length, fmt.sum(g, p => p.saldo + p.mora)];
           });
           filasRes.push(['TOTAL', items.length, total]);
           cfg = {
@@ -2233,14 +2256,15 @@
               { titulo: 'Estudiante', ancho: 32, tipo: 'texto' }, { titulo: 'DNI', ancho: 12, tipo: 'codigo' },
               { titulo: 'Apoderado', ancho: 28, tipo: 'texto' }, { titulo: 'Teléfono Apoderado', ancho: 17, tipo: 'codigo' },
               { titulo: 'Concepto', ancho: 28, tipo: 'texto' }, { titulo: 'Vencimiento', ancho: 14, tipo: 'fecha' },
-              { titulo: 'Días de Atraso', ancho: 13, tipo: 'entero' }, { titulo: 'Saldo Pendiente', ancho: 17, tipo: 'dinero' }
+              { titulo: 'Días de Atraso', ancho: 13, tipo: 'entero' }, { titulo: 'Saldo (sin mora)', ancho: 17, tipo: 'dinero' },
+              { titulo: 'Mora', ancho: 14, tipo: 'dinero' }, { titulo: 'Total a Pagar', ancho: 17, tipo: 'dinero' }
             ],
             filas: items.map(p => {
               const est = db.find('estudiantes', p.estudianteId);
-              return [nombre(est), est?.dni || '', est?.apoderado?.nombre || '—', est?.apoderado?.telefono || '—', p.concepto, xl.fecha(p.fechaVencimiento), Number(p.diasAtraso), Number(p.saldo)];
+              return [nombre(est), est?.dni || '', est?.apoderado?.nombre || '—', est?.apoderado?.telefono || '—', p.concepto, xl.fecha(p.fechaVencimiento), Number(p.diasAtraso), Number(p.saldo), Number(p.mora), Number(fmt.round2(p.saldo + p.mora))];
             }),
-            totales: { etiqueta: `TOTAL DEUDA VENCIDA (${periodLabel}):`, columnas: [{ idx: 8, tipo: 'suma', valor: total }] },
-            resumen: { titulo: 'Antigüedad de la deuda vencida', encabezados: ['Antigüedad de la deuda', 'N° de cuotas', 'Deuda vencida'], tipos: ['texto', 'entero', 'dinero'], filas: filasRes, ultimaEsTotal: true }
+            totales: { etiqueta: `TOTAL DEUDA VENCIDA (${periodLabel}):`, columnas: [{ idx: 8, tipo: 'suma', valor: totalSaldo }, { idx: 9, tipo: 'suma', valor: totalMora }, { idx: 10, tipo: 'suma', valor: total }] },
+            resumen: { titulo: 'Antigüedad de la deuda vencida', encabezados: ['Antigüedad de la deuda', 'N° de cuotas', 'Deuda vencida (con mora)'], tipos: ['texto', 'entero', 'dinero'], filas: filasRes, ultimaEsTotal: true }
           };
         } else {
           const total = fmt.sum(items, m => m.montoMatricula);

@@ -79,7 +79,7 @@
               <div class="flex items-center gap-3">
                 <i class="fa-solid fa-triangle-exclamation text-2xl text-red-600"></i>
                 <div>
-                  <p class="font-extrabold text-base">Presenta ${res.vencidas.length} cuota(s) vencida(s) por un total de ${fmt.money(res.montoVencido)}</p>
+                  <p class="font-extrabold text-base">Presenta ${res.vencidas.length} cuota(s) vencida(s) por un total de ${fmt.money(res.montoVencido)}${res.mora > 0 ? ` <span class="font-semibold">(incluye mora de ${fmt.money(res.mora)})</span>` : ''}</p>
                   <p class="text-xs text-red-700">Por favor regularice su pago a la brevedad para no perjudicar su acceso a simulacros y plataforma.</p>
                 </div>
               </div>
@@ -107,7 +107,7 @@
           <div class="kpi-grid">
             ${UI.kpi({ icon: 'fa-id-card', label: 'Estado de Matrícula', value: res.matriculaActiva ? 'Activa' : 'Inactiva', hint: res.matriculaActiva?.codigo || 'Sin matrícula', tone: 'navy' })}
             ${UI.kpi({ icon: 'fa-circle-check', label: 'Total Pagado Aprobado', value: fmt.money(res.totalPagado), hint: `${res.cuotasPagadas} de ${res.cuotasTotal} cuotas canceladas`, tone: 'green' })}
-            ${UI.kpi({ icon: 'fa-clock', label: 'Saldo Pendiente', value: fmt.money(res.saldo), hint: res.enRevision > 0 ? `(${fmt.money(res.enRevision)} en revisión)` : 'Sin pagos en cola', tone: res.saldo > 0 ? 'amber' : 'blue' })}
+            ${UI.kpi({ icon: 'fa-clock', label: 'Saldo Pendiente', value: fmt.money(res.saldoTotal), hint: [res.mora > 0 ? `incl. mora ${fmt.money(res.mora)}` : '', res.enRevision > 0 ? `(${fmt.money(res.enRevision)} en revisión)` : (res.mora > 0 ? '' : 'Sin pagos en cola')].filter(Boolean).join(' · '), tone: res.saldoTotal > 0 ? 'amber' : 'blue' })}
             ${UI.kpi({ icon: 'fa-calendar-days', label: 'Próxima Cuota', value: res.proximo ? fmt.date(res.proximo.fechaVencimiento) : 'Completado', hint: res.proximo?.concepto || 'Todo cancelado', tone: 'blue' })}
           </div>
 
@@ -279,7 +279,7 @@
                 fmt.money(p.importe),
                 p.descuento > 0 ? `<span class="text-xs text-emerald-600 font-bold" title="${fmt.esc(p.motivoDescuento)}">-S/ ${p.descuento}</span>` : '—',
                 `<span class="font-bold text-emerald-700">${fmt.money(p.abonado)}</span>`,
-                `<span class="font-extrabold ${p.saldo > 0 ? 'text-red-600' : 'text-slate-400'}">${fmt.money(p.saldo)}</span>`,
+                UI.saldoMora(p),
                 UI.badge(p.estado),
                 `<div class="actions">
                   ${puedePagar ? `
@@ -299,7 +299,7 @@
                 </div>`
               ];
             }),
-            foot: `<tfoot><tr><td colspan="5" class="text-right">SALDO TOTAL PENDIENTE:</td><td class="num font-extrabold text-red-600">${fmt.money(res.saldo)}</td><td colspan="2"></td></tr></tfoot>`
+            foot: `<tfoot><tr><td colspan="5" class="text-right">SALDO TOTAL PENDIENTE${res.mora > 0 ? ` <span class="mora-tag">(incl. mora ${fmt.money(res.mora)})</span>` : ''}:</td><td class="num font-extrabold text-red-600">${fmt.money(res.saldoTotal)}</td><td colspan="2"></td></tr></tfoot>`
           })}
         </div>
       `;
@@ -507,7 +507,7 @@
                         <i class="fa-solid fa-lock"></i>
                         <div class="min-w-0">
                           <p class="font-bold text-slate-800">${fmt.esc(penFija.concepto)}</p>
-                          <p class="text-xs text-slate-500">Vence: ${fmt.date(penFija.fechaVencimiento)} · A pagar: <b>S/ ${penFija.disponible.toFixed(2)}</b></p>
+                          <p class="text-xs text-slate-500">Vence: ${fmt.date(penFija.fechaVencimiento)} · A pagar: <b>S/ ${penFija.disponible.toFixed(2)}</b>${penFija.mora > 0 ? ` <span class="mora-tag">(incl. mora S/ ${penFija.mora.toFixed(2)})</span>` : ''}</p>
                         </div>
                       </div>
                       <input type="hidden" name="pensionId" id="rep-pension" value="${penFija.id}" data-saldo="${penFija.disponible}">
@@ -517,7 +517,7 @@
                         <option value="">Seleccione la cuota que va a pagar...</option>
                         ${pensionesPendientes.map(p => habilitadas.ids.has(p.id) ? `
                           <option value="${p.id}" data-saldo="${p.disponible}">
-                            ${fmt.esc(p.concepto)} — A pagar: S/ ${p.disponible.toFixed(2)} (Vence: ${fmt.date(p.fechaVencimiento)})
+                            ${fmt.esc(p.concepto)} — A pagar: S/ ${p.disponible.toFixed(2)}${p.mora > 0 ? ` (incl. mora S/ ${p.mora.toFixed(2)})` : ''} (Vence: ${fmt.date(p.fechaVencimiento)})
                           </option>` : `
                           <option value="${p.id}" disabled>
                             🔒 ${fmt.esc(p.concepto)} — Bloqueada: pague primero la cuota anterior
@@ -561,7 +561,8 @@
                         <input type="text" name="monto" id="rep-monto" class="input font-extrabold text-lg text-navy" readonly tabindex="-1"
                                value="${penFija ? penFija.disponible.toFixed(2) : ''}" placeholder="Seleccione una cuota">
                       </div>
-                      <span class="hint">El monto se toma del saldo de la cuota y no se puede modificar.</span>
+                      <span class="hint">El monto se toma del saldo de la cuota (más la mora, si corresponde) y no se puede modificar.</span>
+                      <div id="rep-mora" class="hint-warn mora-incluye" hidden></div>
                     </div>
                     <div class="field">
                       <label class="label">Fecha en que realizó el pago <span class="text-red-500">*</span></label>
@@ -684,9 +685,31 @@
       const fechaMin = fmt.addDays(fmt.today(), -RULES.diasPagoAtras);
 
       // El monto es automático (saldo disponible de la cuota) y no se puede editar.
-      const saldoElegido = () => !selP ? '' : (selP.tagName === 'SELECT' ? selP.selectedOptions[0]?.dataset.saldo : selP.dataset.saldo) || '';
-      const updateMonto = () => { const sd = saldoElegido(); inMonto.value = sd ? Number(sd).toFixed(2) : ''; };
+      // Monto = saldo de la cuota + mora calculada hasta la FECHA DE PAGO elegida (quien pagó a tiempo no paga mora de más).
+      const calcular = () => {
+        const pen = selP && selP.value ? db.find('pensiones', selP.value) : null;
+        if (!pen) return null;
+        const inf = finance.info(pen, db.all('pagos'));
+        const f = form?.elements.fechaPago?.value;
+        const fecha = (f && f <= fmt.today()) ? f : fmt.today();
+        const mora = inf.moraFija ? inf.mora : finance.moraA(inf, fecha);
+        return { inf, fecha, mora, monto: finance.disponibleA(inf, fecha) };
+      };
+      const updateMonto = () => {
+        const c = calcular();
+        inMonto.value = c ? c.monto.toFixed(2) : '';
+        const box = document.getElementById('rep-mora');
+        if (!box) return;
+        if (c && c.mora > 0) {
+          const d = finance.moraDetalle(c.inf, c.fecha);
+          box.hidden = false;
+          box.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i><span>Incluye <b>mora de ${fmt.money(c.mora)}</b> (${d.diasMora} ${d.diasMora === 1 ? 'día' : 'días'} con mora, hasta el ${fmt.date(c.fecha)})</span>
+            <button type="button" class="mora-eye" data-mora="${c.inf.id}" data-mora-fecha="${c.fecha}" title="Ver cuánto aumentó por mora" aria-label="Ver cuánto aumentó por mora"><i class="fa-solid fa-eye"></i></button>`;
+        } else box.hidden = true;
+      };
       if (selP) { selP.addEventListener('change', updateMonto); updateMonto(); }
+      form?.elements.fechaPago?.addEventListener('input', updateMonto);
+      form?.elements.fechaPago?.addEventListener('change', updateMonto);
 
       // N° de operación repetido: solo cuenta dentro del MISMO método (el mismo código en Yape y en Plin es válido).
       const metodoActual = () => form?.querySelector('input[name="metodo"]:checked')?.value || 'Yape';
@@ -759,7 +782,12 @@
         if (!info || info.disponible <= 0) {
           return UI.alert('Cuota no disponible', 'Esta cuota ya no tiene saldo disponible para reportar (está cancelada o ya tiene un pago en revisión).', 'warning');
         }
-        const monto = info.disponible;
+        const fPago = (fechaPago && fechaPago <= fmt.today()) ? fechaPago : fmt.today();
+        const monto = finance.disponibleA(info, fPago);
+        if (!(monto > 0)) {
+          return UI.alert('Cuota no disponible', 'Esta cuota ya no tiene saldo disponible para reportar.', 'warning');
+        }
+        const moraPago = info.moraFija ? info.mora : finance.moraA(info, fPago);
         const orden = finance.habilitadas(estudiante.id, db.all('pagos'));
         if (!orden.ids.has(pensionId)) {
           return UI.alert('Cuota no habilitada', `Las cuotas se pagan en orden. Primero debe pagar «${orden.primera ? orden.primera.concepto : 'la cuota más antigua'}».`, 'warning');
@@ -801,7 +829,7 @@
           comprobante: voucherBase64,
           estado: 'Pendiente',
           motivoRechazo: '',
-          observacion: 'Reportado por estudiante/apoderado',
+          observacion: 'Reportado por estudiante/apoderado' + (moraPago > 0 ? ` · Incluye mora de ${fmt.money(moraPago)} (${finance.moraDetalle(info, fPago).diasMora} días con mora)` : ''),
           fechaReporte: fmt.nowISO(),
           registradoPor: 'usuario',
           revisadoPor: null,

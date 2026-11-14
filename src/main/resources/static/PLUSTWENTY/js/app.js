@@ -69,7 +69,15 @@
   };
 
   // Límites de coherencia usados por validadores y formularios (una sola fuente de verdad).
-  const RULES = { edadMin: 12, edadMax: 70, diasPagoAtras: 30 };
+  const RULES = {
+    edadMin: 12, edadMax: 70, diasPagoAtras: 30,
+    // Mora (recargo por pago atrasado). Se calcula sola, sin guardarse: depende de los días de atraso.
+    //   mora = saldo pendiente × tasaDiaria × (días de atraso − días de gracia)
+    //   Según indicación del profesor: 1 % por cada día de atraso, desde el día siguiente al vencimiento.
+    //   diasGracia: 0 = sin días de gracia.
+    //   topePct: la mora nunca supera ese % del importe de la cuota (0.20 = 20 %). null = sin tope.
+    mora: { activa: true, diasGracia: 0, tasaDiaria: 0.01, topePct: 0.20 }
+  };
   const fechaHaceAnios = n => { const d = new Date(); d.setFullYear(d.getFullYear() - n); return toISO(d); };
 
   const validators = {
@@ -294,9 +302,42 @@
       else if (p.fechaVencimiento < today()) estado = 'Vencida';
       else if (abonado > 0) estado = 'Parcial';
       else estado = 'Pendiente';
-      const disponible = p.anulada ? 0 : round2(Math.max(0, saldo - enRevision));
       const diasAtraso = estado === 'Vencida' ? daysBetween(p.fechaVencimiento, today()) : 0;
-      return { ...p, abonado, enRevision, descuento, exigible, saldo, disponible, estado, diasAtraso, nPagos: pagos.length };
+      const base = { ...p, abonado, enRevision, descuento, exigible, saldo, estado, diasAtraso, nPagos: pagos.length };
+      // Mora: si el estudiante ya reportó el pago completo (en revisión), la mora queda fijada en lo que declaró.
+      let mora = 0, moraFija = false;
+      if (estado === 'Vencida') {
+        if (enRevision >= saldo && enRevision > 0) { mora = round2(Math.max(0, enRevision - saldo)); moraFija = true; }
+        else mora = finance.moraA(base, today());
+      }
+      const moraCobrada = round2(Math.max(0, abonado - exigible));      // lo pagado por encima de la cuota = mora ya cobrada
+      const disponible = p.anulada ? 0 : round2(Math.max(0, saldo + mora - enRevision));
+      return { ...base, mora, moraFija, moraCobrada, totalPagar: round2(saldo + mora), disponible };
+    },
+    /** Mora de una obligación calculada a una fecha (la del pago): saldo × tasa diaria × días con mora, con tope. */
+    moraA(inf, fecha) {
+      const R = RULES.mora;
+      if (!R.activa || inf.anulada || !(inf.saldo > 0) || !fecha || fecha <= inf.fechaVencimiento) return 0;
+      const dias = Math.max(0, daysBetween(inf.fechaVencimiento, fecha) - R.diasGracia);
+      const bruta = inf.saldo * R.tasaDiaria * dias;
+      return round2(R.topePct == null ? bruta : Math.min(bruta, inf.exigible * R.topePct));
+    },
+    /** Desglose del cálculo (para mostrarlo en pantalla). */
+    moraDetalle(inf, fecha) {
+      const R = RULES.mora;
+      const f = fecha || today();
+      const diasAtraso = Math.max(0, daysBetween(inf.fechaVencimiento, f));
+      const diasMora = Math.max(0, diasAtraso - R.diasGracia);
+      const bruta = round2(inf.saldo * R.tasaDiaria * diasMora);
+      const hayTope = R.topePct != null;
+      const tope = hayTope ? round2(inf.exigible * R.topePct) : null;
+      return { fecha: f, diasAtraso, diasGracia: R.diasGracia, diasMora, tasa: R.tasaDiaria, topePct: R.topePct, bruta, tope, topeAplicado: hayTope && bruta > tope, mora: finance.moraA(inf, f) };
+    },
+    /** Monto a pagar si el pago se realiza en `fecha` (saldo + mora a esa fecha − lo ya reportado en revisión). */
+    disponibleA(inf, fecha) {
+      if (inf.anulada) return 0;
+      const mora = (inf.moraFija ? inf.mora : finance.moraA(inf, fecha));
+      return round2(Math.max(0, inf.saldo + mora - inf.enRevision));
     },
     pensionesDe(estId, pagosAll) {
       const pagos = pagosAll || db.all('pagos');
@@ -331,8 +372,10 @@
         enRevision: sum(pagos.filter(p => p.estado === 'Pendiente'), p => p.monto),
         exigible: sum(pens, p => p.exigible),
         saldo: sum(pens, p => p.saldo),
+        mora: sum(pens, p => p.mora),
+        saldoTotal: sum(pens, p => p.saldo + p.mora),
         vencidas: pens.filter(p => p.estado === 'Vencida'),
-        montoVencido: sum(pens.filter(p => p.estado === 'Vencida'), p => p.saldo),
+        montoVencido: sum(pens.filter(p => p.estado === 'Vencida'), p => p.saldo + p.mora),
         proximo: pens.filter(p => p.saldo > 0 && p.fechaVencimiento >= t)[0] || null,
         cuotasPagadas: pens.filter(p => p.estado === 'Pagada').length,
         cuotasTotal: pens.length,
@@ -505,6 +548,69 @@
     badge(estado, label) {
       const [t, i] = BADGES[estado] || ['neutral', 'fa-circle'];
       return `<span class="badge badge-${t}"><i class="fa-solid ${i}"></i>${esc(label || estado)}</span>`;
+    },
+    /** Celda de saldo: total a pagar (con mora) y un ojito que muestra cuánto aumentó por mora. */
+    saldoMora(p) {
+      const ojo = (id, tip) => `<button type="button" class="mora-eye" data-mora="${id}" title="${tip}" aria-label="${tip}"><i class="fa-solid fa-eye"></i></button>`;
+      if (p.mora > 0) {
+        return `<div class="saldo-mora"><span class="font-extrabold text-red-600">${money(p.saldo + p.mora)}</span> ${ojo(p.id, 'Ver cuánto aumentó por mora')}<p class="mora-tag">incl. mora ${money(p.mora)}${!p.moraFija && RULES.mora.topePct != null && p.mora >= round2(p.exigible * RULES.mora.topePct) ? ' (tope)' : ''}</p></div>`;
+      }
+      if (p.saldo > 0 && p.estado === 'Vencida' && RULES.mora.activa && !p.moraFija) {
+        return `<div class="saldo-mora"><span class="font-extrabold text-red-600">${money(p.saldo)}</span> ${ojo(p.id, 'Ver estado de la mora')}<p class="mora-tag mora-gracia">en días de gracia</p></div>`;
+      }
+      if (p.moraCobrada > 0) {
+        return `<div class="saldo-mora"><span class="font-extrabold text-slate-400">${money(p.saldo)}</span> ${ojo(p.id, 'Ver mora pagada')}<p class="mora-tag mora-pagada">mora pagada ${money(p.moraCobrada)}</p></div>`;
+      }
+      return `<span class="font-extrabold ${p.saldo > 0 ? 'text-red-600' : 'text-slate-400'}">${money(p.saldo)}</span>`;
+    },
+    /** Ventana con el detalle del cálculo de mora de una obligación. */
+    moraDetalle(penId, fecha) {
+      const pen = db.find('pensiones', penId);
+      if (!pen) return;
+      const inf = finance.info(pen, db.all('pagos'));
+      const R = RULES.mora;
+      const d = finance.moraDetalle(inf, fecha);
+      const pct = x => (x * 100).toLocaleString('es-PE', { maximumFractionDigits: 2 }) + ' %';
+      const fila = (a, b, cls = '') => `<tr class="${cls}"><td>${a}</td><td>${b}</td></tr>`;
+      let filas = fila('Importe de la cuota', money(inf.importe));
+      if (inf.descuento > 0) filas += fila('Descuento', '− ' + money(inf.descuento));
+      if (inf.abonado > 0) filas += fila('Abonado (aprobado)', '− ' + money(Math.min(inf.abonado, inf.exigible)));
+      filas += fila('Saldo pendiente (sin mora)', money(inf.saldo), 'mora-sub');
+      let cierre = '';
+      if (inf.moraCobrada > 0 && inf.saldo <= 0) {
+        filas += fila('Mora pagada', money(inf.moraCobrada), 'mora-total');
+        cierre = '<p class="mora-nota">Esta cuota ya fue cancelada. La mora indicada se cobró junto con el pago.</p>';
+      } else if (inf.estado !== 'Vencida') {
+        cierre = '<p class="mora-nota">Esta cuota aún no está vencida: no genera mora.</p>';
+      } else if (inf.moraFija) {
+        filas += fila('Mora incluida en su pago reportado', '+ ' + money(inf.mora), 'mora-total');
+        filas += fila('TOTAL REPORTADO (en revisión)', money(inf.saldo + inf.mora), 'mora-grand');
+        cierre = '<p class="mora-nota">Su pago ya fue reportado, por eso la mora quedó fijada y no sigue aumentando.</p>';
+      } else {
+        filas += fila('Venció el', fmtDate(inf.fechaVencimiento));
+        filas += fila('Días de atraso', d.diasAtraso + (d.diasAtraso === 1 ? ' día' : ' días'));
+        if (d.diasGracia > 0) {
+          filas += fila('Días de gracia (sin mora)', '− ' + d.diasGracia);
+          filas += fila('Días con mora', d.diasMora + (d.diasMora === 1 ? ' día' : ' días'));
+        }
+        filas += fila('Tasa de mora', pct(d.tasa) + ' diario sobre el saldo');
+        if (d.tope != null) filas += fila(`Tope máximo (${pct(d.topePct)} de la cuota)`, money(d.tope));
+        filas += fila('Mora acumulada', '+ ' + money(d.mora), 'mora-total');
+        filas += fila('TOTAL A PAGAR HOY', money(inf.saldo + d.mora), 'mora-grand');
+        const diasAlTope = d.tope != null && inf.saldo * d.tasa > 0 ? Math.ceil(d.tope / (inf.saldo * d.tasa)) : null;
+        cierre = d.diasMora === 0
+          ? `<p class="mora-nota">La cuota está vencida pero todavía en los ${d.diasGracia} días de gracia: <b>aún no se cobra mora</b>. Empezará a correr dentro de ${d.diasGracia - d.diasAtraso + 1} ${d.diasGracia - d.diasAtraso + 1 === 1 ? 'día' : 'días'}.</p>`
+          : (d.topeAplicado
+              ? `<p class="mora-nota">Se alcanzó el <b>tope máximo</b> de mora (${pct(d.topePct)} de la cuota = ${money(d.tope)}); ya no sigue aumentando.</p>`
+              : (diasAlTope ? `<p class="mora-nota">La mora seguirá subiendo ${money(inf.saldo * d.tasa)} por día hasta llegar al tope (a los ${diasAlTope} días de mora).</p>` : ''));
+      }
+      const como = R.activa ? `
+        <details class="mora-como"><summary>¿Cómo se calcula la mora?</summary>
+          <p>Si una cuota no se paga a tiempo, ${R.diasGracia > 0 ? `después de <b>${R.diasGracia} días de gracia</b> ` : ''}se suma una mora de <b>${pct(R.tasaDiaria)} del saldo por cada día</b> de atraso${R.topePct != null ? `, hasta un máximo del <b>${pct(R.topePct)} del importe de la cuota</b>` : ''}.</p>
+          <p class="mora-ej">Ejemplo: saldo de ${money(100)} con 10 días de atraso → ${money(100 * R.tasaDiaria * Math.max(0, 10 - R.diasGracia))} de mora (total ${money(100 + 100 * R.tasaDiaria * Math.max(0, 10 - R.diasGracia))}).</p>
+          <p>La mora se calcula hasta la <b>fecha en que se realizó el pago</b>: quien pagó a tiempo y reporta tarde no paga mora de más.</p>
+        </details>` : '';
+      return UI.alert('Detalle de mora', inf.concepto, 'info', `<table class="mora-tabla">${filas}</table>${cierre}${como}`);
     },
     method(metodo) {
       const cls = { Yape: 'yape', Plin: 'plin', Efectivo: 'efectivo', Transferencia: 'transfer' }[metodo] || 'transfer';
@@ -1447,6 +1553,13 @@
 
   /* Automatismos: preparan formularios nuevos y paginan tablas nuevas cada vez que cambia el DOM. */
   function iniciarAutomatismos() {
+    // Ojito de mora (en cualquier tabla): muestra el desglose de la mora de esa cuota.
+    document.addEventListener('click', e => {
+      const b = e.target.closest && e.target.closest('[data-mora]');
+      if (!b) return;
+      e.preventDefault(); e.stopPropagation();
+      UI.moraDetalle(b.dataset.mora, b.dataset.moraFecha || undefined);
+    }, true);
     Forms.instalar();
     // El observador corre como microtarea justo después de cada cambio del DOM (antes de que el usuario pueda hacer clic).
     const correr = () => { Forms.scan(); Pager.scan(); };
