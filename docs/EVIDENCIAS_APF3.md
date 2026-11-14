@@ -22,14 +22,15 @@ estado:abierta → estado:en-curso → estado:resuelta → estado:verificada
 | Resolver | el responsable | PR que dice `Closes #n`; el CI debe estar en verde; etiqueta `estado:resuelta` |
 | Verificar | **otra persona distinta a quien reportó** | prueba el caso original, comenta "verificado" y pone `estado:verificada` |
 
-**Preparación (una sola vez):**
+**Preparación (una sola vez, en PowerShell, desde la raíz del proyecto):**
 1. `gh auth login`
-2. `./scripts/crear-etiquetas.sh` → crea `bug`, `estado:*`, `severidad:*`, `reportada-por-usuario`.
-3. `./scripts/crear-incidencias-iniciales.sh` → registra las 8 fallas reales que el equipo ya corrigió. **Borra del script las que no ocurrieron en tu proyecto**: solo se registra lo real.
-4. Durante la prueba del SUS, cada falla que reporte un encuestado se registra con origen "Reportada por un usuario" y la etiqueta `reportada-por-usuario`.
+2. `.\scripts\crear-etiquetas.ps1` → crea `bug`, `estado:*`, `severidad:*`, `reportada-por-usuario`.
+3. `.\scripts\crear-incidencias-iniciales.ps1` → registra las fallas reales que el equipo ya corrigió. Cada una queda marcada como **registro retroactivo** y con su **fecha real de detección**, para no inflar los tiempos con la fecha de hoy. Las que no ocurrieron en el proyecto se excluyen con `$omitir`: solo se registra lo real.
+4. Para marcar una incidencia como resuelta: `.\scripts\resolver-incidencia.ps1 -Numero N -Correccion "commit abc1234" -Fecha AAAA-MM-DD`. La **verifica y cierra otra persona** (etiqueta `estado:verificada` + comentario + cerrar).
+5. Durante la prueba del SUS, cada falla que reporte un encuestado se registra con origen "Reportada por un usuario" y la etiqueta `reportada-por-usuario`.
 
 **Lo que se entrega:** el listado de ≥ 8 incidencias reales: cuántas se resolvieron, en cuánto tiempo (fecha de apertura → cierre) y cuáles siguen abiertas y por qué.
-Se obtiene con: `gh issue list --state all --label bug --json number,title,state,createdAt,closedAt,labels`
+Se obtiene con: `.\scripts\listado-incidencias.ps1` (tabla en pantalla y archivo `incidencias.csv`).
 
 **Error frecuente que se evita:** cerrar sin verificación. Quien reporta no es quien cierra.
 
@@ -98,34 +99,36 @@ Las pruebas del frontend buscan `js/app.js` en `src/main/resources/static/PLUSTW
 
 ## Evidencia 4 · Entrega continua (3 pts)
 
-**Archivos:** `.github/workflows/cd.yml` y `scripts/deploy.sh`.
+**Archivos:** `.github/workflows/cd.yml`, `scripts/deploy.sh` y la ruta pública `GET /api/health` (`HealthController`), que usa la prueba de humo.
 
-**Cómo funciona:** al crear y subir una etiqueta `vX.Y.Z`, GitHub Actions (1) repite las pruebas y (2) solo si pasan, despliega a Render con `scripts/deploy.sh` (un solo comando), (3) registra el despliegue y (4) publica el Release con notas automáticas.
+**Cómo funciona:** al crear y subir una etiqueta `vX.Y.Z`, GitHub Actions (1) repite las pruebas y (2) solo si pasan, despliega a Render con `scripts/deploy.sh` (un solo comando), (3) comprueba que `/api/health` responde, (4) registra el despliegue y (5) publica el Release con notas automáticas.
 
 **Configuración (una sola vez):**
-1. En Render → tu servicio → **Settings → Auto-Deploy → No** (así solo despliega el CD, no cada push).
-2. Render → Settings → **Deploy Hook**: copiar la URL.
+1. En Render → tu servicio → **Settings → Build & Deploy → Auto-Deploy → Off**. Así solo despliega el CD y no cada push. *Desde entonces, cada versión nueva se publica con una etiqueta.*
+2. Render → Settings → **Deploy Hook**: copiar la URL (contiene una clave: es un secreto).
 3. GitHub → Settings → Secrets and variables → Actions:
    - *Secret* `RENDER_DEPLOY_HOOK_URL` = la URL del hook (**nunca** en el código).
    - *Variable* `APP_URL` = `https://<tu-app>.onrender.com` (para la prueba de humo `/api/health`).
 4. (Opcional) Settings → Environments → `produccion` → *Required reviewers*.
 
-**Publicar una versión (como en la diapositiva):**
-```bash
-git tag -a v1.1.0 -m "Mora 1 % diario y orden de pago"
-git push origin --tags
+**Publicar una versión** (la etiqueta se pone sobre un commit de `main` que ya contiene `cd.yml`):
+```powershell
+git checkout main
+git pull
+git tag -a v1.1.0 -m "Mora 1 % diario, orden de pago y despliegue continuo"
+git push origin v1.1.0
 ```
-Hacer **al menos dos despliegues distintos** (por ejemplo `v1.1.0` y `v1.1.1`).
+Hacer **al menos dos despliegues distintos** (`v1.1.0` y `v1.1.1`), cada uno con un cambio real.
 
 **Bitácora de despliegues:** Actions → *CD* → cada ejecución muestra versión, commit, quién la disparó y cuándo (pestaña *Summary*); además queda el Release en GitHub. Copiar cada despliegue real a `docs/BITACORA_DESPLIEGUES.md`.
 
 ### Procedimiento de vuelta atrás
 Si una versión nueva falla, se vuelve a desplegar la etiqueta anterior:
-1. GitHub → Actions → **CD** → *Run workflow* → `version` = la etiqueta anterior (ej. `v1.0.0`).
-2. O, desde la terminal: `RENDER_DEPLOY_HOOK_URL=... ./scripts/deploy.sh v1.0.0`
+1. GitHub → Actions → **CD** → *Run workflow* → `version` = la etiqueta anterior (ej. `v1.1.0`).
+2. O, desde Git Bash: `RENDER_DEPLOY_HOOK_URL="..." bash scripts/deploy.sh v1.1.0`
 3. Verificar `GET /api/health` y la operación que fallaba.
-4. Registrar una incidencia con la causa y corregir en una nueva versión (`v1.1.2`), nunca editando una etiqueta publicada.
+4. Registrar una incidencia con la causa y corregir en una nueva versión (`v1.1.2`), nunca editando una etiqueta publicada. Anotar la vuelta atrás en la tabla de `docs/BITACORA_DESPLIEGUES.md`.
 
-> **Nota:** el script usa el parámetro `ref` (SHA del commit) del Deploy Hook de Render, que está documentado por Render. Si el SHA no existe en tu repositorio, Render responde 404. Para una vuelta atrás manual también sirve Render → Manual Deploy → *Deploy a specific commit*.
+> **Nota:** el script usa el parámetro `ref` del Deploy Hook de Render, que acepta el SHA de un commit ([documentación de Render](https://render.com/docs/deploy-hooks)); por eso el script convierte la etiqueta en su SHA. Para una vuelta atrás manual también sirve Render → Manual Deploy → *Deploy a specific commit*.
 
 **Error frecuente:** subir archivos a mano y llamarlo entrega continua. Aquí cualquier persona puede repetir el despliegue con un comando.
