@@ -76,7 +76,11 @@
     //   Según indicación del profesor: 1 % por cada día de atraso, desde el día siguiente al vencimiento.
     //   diasGracia: 0 = sin días de gracia.
     //   topePct: la mora nunca supera ese % del importe de la cuota (0.20 = 20 %). null = sin tope.
-    mora: { activa: true, diasGracia: 0, tasaDiaria: 0.01, topePct: 0.20 }
+    mora: { activa: true, diasGracia: 0, tasaDiaria: 0.01, topePct: 0.20 },
+    // Ciclos académicos: un ciclo se crea ANTES de empezar, dura entre 2 semanas y 12 meses y su fin cubre la última pensión.
+    // Descuentos por cuota: desactivados (la academia no los otorga). Con false se ignora cualquier descuento guardado.
+    descuentos: false,
+    ciclo: { mesesAnticipacionMax: 18, duracionMinDias: 14, duracionMaxDias: 366 }
   };
   const fechaHaceAnios = n => { const d = new Date(); d.setFullYear(d.getFullYear() - n); return toISO(d); };
 
@@ -292,7 +296,7 @@
       const pagos = (pagosAll || db.all('pagos')).filter(x => x.pensionId === p.id);
       const abonado = sum(pagos.filter(x => x.estado === 'Aprobado'), x => x.monto);
       const enRevision = sum(pagos.filter(x => x.estado === 'Pendiente'), x => x.monto);
-      const descuento = round2(p.descuento || 0);
+      const descuento = RULES.descuentos ? round2(p.descuento || 0) : 0;   // los descuentos están desactivados (RULES.descuentos)
       const exigible = round2(Math.max(0, p.importe - descuento));
       // Saldo pendiente = Importe exigible - (Abonos aprobados + Descuentos)
       const saldo = round2(Math.max(0, p.importe - (abonado + descuento)));
@@ -351,12 +355,16 @@
      * Devuelve { ids: Set de cuotas habilitadas, primera: cuota más antigua habilitada }.
      */
     habilitadas(estId, pagosAll) {
-      const ids = new Set(); const vistos = new Set(); let primera = null;
-      finance.pensionesDe(estId, pagosAll).filter(p => !p.anulada && p.disponible > 0).forEach(p => {
+      // En cada matrícula se paga primero el cargo de MATRÍCULA y luego las pensiones por orden de vencimiento.
+      const elegida = new Map();
+      const orden = finance.pensionesDe(estId, pagosAll).filter(p => !p.anulada && p.disponible > 0);
+      orden.forEach(p => {
         const k = p.matriculaId || p.cicloId || 'sin-matricula';
-        if (vistos.has(k)) return;
-        vistos.add(k); ids.add(p.id); if (!primera) primera = p;
+        const actual = elegida.get(k);
+        if (!actual || (p.tipo === 'Matrícula' && actual.tipo !== 'Matrícula')) elegida.set(k, p);
       });
+      const ids = new Set([...elegida.values()].map(p => p.id));
+      const primera = orden.find(p => ids.has(p.id)) || null;
       return { ids, primera };
     },
     resumen(estId) {
@@ -1115,7 +1123,15 @@
     }
 
     /* ---------- reglas de validación por campo ---------- */
+    /** Validaciones propias de una pantalla: <input data-validar="nombre"> llama a Forms.validadores[nombre](el, form). */
+    const VALIDADORES = {};
     function mensaje(el) {
+      const base = mensajeBase(el);
+      if (base || !el.dataset || !el.dataset.validar) return base;
+      const fn = VALIDADORES[el.dataset.validar];
+      return fn && el.value ? (fn(el, el.form) || '') : '';
+    }
+    function mensajeBase(el) {
       const picker = el.closest?.('.est-picker');
       if (picker) {                                   // buscador con autocompletado (estudiante / programa)
         if (picker.hasAttribute('data-filtro')) return '';
@@ -1124,7 +1140,9 @@
         if (el.value.trim()) return 'Seleccione una opción de la lista de sugerencias.';
         return el.required ? (picker.dataset.tipo === 'programa'
           ? 'Busque y seleccione un programa (por nombre o siglas).'
-          : 'Busque y seleccione un estudiante (por DNI, apellidos o nombres).') : '';
+          : picker.dataset.tipo === 'ciclo'
+            ? 'Busque y seleccione un ciclo (por siglas, universidad o nombre del ciclo).'
+            : 'Busque y seleccione un estudiante (por DNI, apellidos o nombres).') : '';
       }
       if (el.tagName === 'SELECT') return el.required && !el.value ? 'Seleccione una opción.' : '';
 
@@ -1132,8 +1150,8 @@
       if (el.type === 'date') {
         if (!v) return el.required ? (el.validity.badInput ? 'La fecha está incompleta o no es válida.' : 'Este campo es obligatorio.') : '';
         if (!/^\d{4}-\d{2}-\d{2}$/.test(v) || isNaN(parseDate(v))) return 'La fecha no es válida.';
-        if (el.min && v < el.min) return `La fecha no puede ser anterior al ${esFecha(el.min)}.`;
-        if (el.max && v > el.max) return `La fecha no puede ser posterior al ${esFecha(el.max)}.`;
+        if (el.min && v < el.min) return el.dataset.minMsg || `La fecha no puede ser anterior al ${esFecha(el.min)}.`;
+        if (el.max && v > el.max) return el.dataset.maxMsg || `La fecha no puede ser posterior al ${esFecha(el.max)}.`;
         const otro = el.dataset.after && el.form?.elements[el.dataset.after]?.value;
         if (otro && v <= otro) return el.dataset.afterMsg || 'Debe ser posterior a la fecha de inicio.';
         return '';
@@ -1235,10 +1253,10 @@
         if (txt && !el.closest('.est-picker[data-filtro]') && txt.dataset.touched) mostrar(txt, mensaje(txt));
         return;
       }
-      if (!el.dataset || !el.dataset.touched) return;
-      mostrar(el, mensaje(el));
+      if (!el.dataset) return;
+      if (el.dataset.touched) mostrar(el, mensaje(el));
       // un cambio en un campo puede invalidar a otro dependiente (p. ej. fecha fin / fecha inicio)
-      el.form?.querySelectorAll('[data-after],[data-differs]').forEach(o => { if (o !== el && o.dataset.touched) mostrar(o, mensaje(o)); });
+      el.form?.querySelectorAll('[data-after],[data-differs],[data-validar]').forEach(o => { if (o !== el && o.dataset.touched) mostrar(o, mensaje(o)); });
     }
     function onSubmit(e) {
       const form = e.target;
@@ -1320,7 +1338,7 @@
       document.addEventListener('change', onChange, true);
       document.addEventListener('submit', onSubmit, true);
     }
-    return { instalar, scan, mensaje, validarForm, mostrar, REGLAS };
+    return { instalar, scan, mensaje, validarForm, mostrar, REGLAS, validadores: VALIDADORES, esFecha };
   })();
 
   /* ------------------------------------------------------------------

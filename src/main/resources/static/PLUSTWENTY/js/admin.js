@@ -4,7 +4,7 @@
    1. Dashboard (KPIs globales, gráficos Chart.js, últimos pagos)
    2. Gestión de Matrículas (CRUD, filtros, activación/desactivación, obligaciones)
    3. Gestión de Estudiantes (CRUD sin eliminación, búsqueda, modal 360°)
-   4. Gestión de Pensiones (cronogramas de pago, cuotas individuales, descuentos, vencimientos)
+   4. Gestión de Pensiones (cronogramas de pago, cuotas individuales, vencimientos)
    5. Verificación de Pagos (aprobar, rechazar con motivo, caja en efectivo, visor)
    6. Reportes (ingresos, morosidad, matrículas; exportación Excel y print PDF)
    7. Gestión de Usuarios y Roles (creación, vinculación, reseteo de claves)
@@ -56,6 +56,16 @@
         texto: p => `${p.nombre} ${p.siglas}`,
         titulo: p => fmt.esc(p.nombre),
         detalle: p => fmt.esc(p.siglas)
+      },
+      // Ciclos: se encuentran por siglas, nombre de la universidad/programa, nombre del ciclo o modalidad
+      ciclo: {
+        placeholder: 'Escriba siglas, universidad o ciclo (ej. UNT 2026-I)...',
+        vacio: 'Sin resultados. Pruebe con otras siglas, universidad o ciclo.',
+        items: todos => db.all('ciclos').filter(c => todos || c.activo),
+        etiqueta: c => { const p = db.find('programas', c.programaId); return `${p ? (p.siglas || p.nombre) + ' · ' : ''}${c.nombre}`; },
+        texto: c => { const p = db.find('programas', c.programaId); return `${p ? p.siglas + ' ' + p.nombre + ' ' : ''}${c.nombre} ${c.modalidad || ''}`; },
+        titulo: c => { const p = db.find('programas', c.programaId); return fmt.esc(`${p ? (p.siglas || p.nombre) + ' · ' : ''}${c.nombre}`); },
+        detalle: c => { const p = db.find('programas', c.programaId); return fmt.esc(`${p ? p.nombre + ' · ' : ''}${c.modalidad || ''}`); }
       }
     };
     const cfgDe = w => TIPOS[w.dataset.tipo] || TIPOS.estudiante;
@@ -211,8 +221,8 @@
       const vencidas = pensiones.map(p => finance.info(p, pagos)).filter(p => p.estado === 'Vencida');
       const montoVencido = fmt.sum(vencidas, p => p.saldo + p.mora);
 
-      // Últimos 5 pagos reportados
-      const ultimosPagos = pagos.slice().sort((a, b) => b.fechaReporte.localeCompare(a.fechaReporte)).slice(0, 6);
+      // Cuotas vencidas con mayor deuda (deuda = saldo + mora), las 6 más altas
+      const topVencidas = vencidas.slice().sort((a, b) => (b.saldo + b.mora) - (a.saldo + a.mora)).slice(0, 6);
 
       return `
         <div class="stagger space-y-6">
@@ -264,42 +274,37 @@
             </div>
           </div>
 
-          <!-- Tabla de Últimos Pagos -->
+          <!-- Cuotas vencidas: lo que el administrador debe gestionar primero -->
           <div class="card">
             <div class="card-head">
               <div>
-                <h3 class="card-title"><i class="fa-solid fa-bolt"></i> Últimos Pagos Reportados</h3>
-                <p class="card-sub">Acción rápida para auditar o verificar comprobantes</p>
+                <h3 class="card-title"><i class="fa-solid fa-triangle-exclamation"></i> Cuotas Vencidas por Cobrar</h3>
+                <p class="card-sub">Las ${topVencidas.length || 6} mayores deudas vencidas (saldo + mora) para dar seguimiento</p>
               </div>
-              <button class="btn btn-secondary btn-sm" data-go="pagos">Ver todos los pagos</button>
+              <button class="btn btn-secondary btn-sm" data-go="reportes">Ver reporte de morosidad</button>
             </div>
-            ${ultimosPagos.length === 0 ? UI.empty('No hay pagos registrados.') : UI.table({
+            ${topVencidas.length === 0 ? UI.empty('No hay cuotas vencidas. Todo al día.', 'fa-circle-check') : UI.table({
               cols: [
-                { label: 'Fecha' },
                 { label: 'Estudiante' },
-                { label: 'Método' },
-                { label: 'N° Operación' },
-                { label: 'Monto', cls: 'num' },
-                { label: 'Estado' },
+                { label: 'Concepto' },
+                { label: 'Vencimiento' },
+                { label: 'Días de atraso', cls: 'num' },
+                { label: 'Saldo', cls: 'num' },
+                { label: 'Mora', cls: 'num' },
+                { label: 'Total a cobrar', cls: 'num' },
                 { label: 'Acción', cls: 'nowrap text-right' }
               ],
-              rows: ultimosPagos.map(p => {
+              rows: topVencidas.map(p => {
                 const est = db.find('estudiantes', p.estudianteId);
                 return [
-                  `<span class="text-xs font-semibold">${fmt.date(p.fechaPago)}</span>`,
                   `<div><p class="font-bold text-slate-800">${fmt.esc(est ? `${est.nombres} ${est.apellidos}` : '—')}</p><p class="text-xs text-slate-400">DNI ${est?.dni || ''}</p></div>`,
-                  UI.method(p.metodo),
-                  `<div><code class="text-xs bg-slate-100 px-2 py-1 rounded">${fmt.esc(p.numeroOperacion)}</code>${moraChip(p) ? `<div>${moraChip(p)}</div>` : ''}</div>`,
-                  `<span class="font-extrabold ${p.estado === 'Aprobado' ? 'text-emerald-600' : 'text-slate-800'}">${fmt.money(p.monto)}</span>`,
-                  UI.badge(p.estado),
-                  `<div class="actions">
-                    ${p.comprobante ? `<button class="btn btn-secondary btn-sm" data-preview-voucher="${p.id}" title="Ver voucher"><i class="fa-solid fa-image"></i></button>` : ''}
-                    ${p.estado === 'Pendiente' ? `
-                      <button class="btn btn-success btn-sm" data-quick-approve="${p.id}" title="Aprobar"><i class="fa-solid fa-check"></i></button>
-                      <button class="btn btn-danger btn-sm" data-quick-reject="${p.id}" title="Rechazar"><i class="fa-solid fa-xmark"></i></button>
-                    ` : ''}
-                    ${p.estado === 'Aprobado' ? `<button class="btn btn-secondary btn-sm" data-print-recibo="${p.id}" title="Imprimir recibo"><i class="fa-solid fa-print"></i></button>` : ''}
-                  </div>`
+                  `<span class="text-xs font-semibold">${fmt.esc(p.concepto)}</span>`,
+                  `<span class="text-xs font-semibold">${fmt.date(p.fechaVencimiento)}</span>`,
+                  `<span class="font-bold text-red-600">${p.diasAtraso} ${p.diasAtraso === 1 ? 'día' : 'días'}</span>`,
+                  fmt.money(p.saldo),
+                  p.mora > 0 ? `<span class="text-amber-600 font-semibold">${fmt.money(p.mora)}</span>` : '—',
+                  `<span class="font-extrabold text-slate-800">${fmt.money(p.saldo + p.mora)}</span>`,
+                  `<div class="actions"><button class="btn btn-secondary btn-sm" data-dash-student="${p.estudianteId}" title="Ver expediente del estudiante"><i class="fa-solid fa-eye"></i></button></div>`
                 ];
               })
             })}
@@ -381,6 +386,8 @@
 
       // Eventos de botones rápidos
       root.addEventListener('click', async e => {
+        const btnE = e.target.closest('[data-dash-student]');
+        if (btnE) { Shell.go('estudiantes', { id: btnE.dataset.dashStudent }); return; }
         const btnV = e.target.closest('[data-preview-voucher]');
         if (btnV) {
           const pg = db.find('pagos', btnV.dataset.previewVoucher);
@@ -641,7 +648,8 @@
             </div>
             <div class="field">
               <label class="label">Monto de Matrícula (S/)</label>
-              <input type="number" step="0.01" min="0" max="20000" name="montoMatricula" id="mat-modal-monto" class="input" placeholder="0.00" required>
+              <input type="number" step="0.01" name="montoMatricula" id="mat-modal-monto" class="input font-bold bg-slate-50 cursor-not-allowed" placeholder="Elija el ciclo" readonly tabindex="-1" required>
+              <p class="text-xs text-slate-400 mt-1">Monto fijo definido en la configuración del ciclo.</p>
             </div>
           </div>
 
@@ -679,9 +687,7 @@
 
       selCic.addEventListener('change', () => {
         const opt = selCic.selectedOptions[0];
-        if (opt && opt.dataset.mat) {
-          inMonto.value = opt.dataset.mat;
-        }
+        inMonto.value = (opt && opt.dataset.mat) ? opt.dataset.mat : '';
       });
 
       document.getElementById('form-nueva-mat').addEventListener('submit', e => {
@@ -691,12 +697,12 @@
         const cicloId = fd.get('cicloId');
         const programaId = fd.get('programaId');
         const fecha = fd.get('fecha');
-        const monto = parseFloat(fd.get('montoMatricula')) || 0;
 
         const ciclo = db.find('ciclos', cicloId);
         const est = db.find('estudiantes', estId);
         if (!est) return UI.toast('Seleccione un estudiante de la lista');
         if (!ciclo) return UI.toast('Seleccione el programa y el ciclo');
+        const monto = Number(ciclo.matricula) || 0;   // fijo: siempre el monto del ciclo, no el del formulario
 
         // Una sola llamada: el servidor crea la matrícula + cronograma, actualiza al estudiante,
         // notifica y audita en una transacción (antes eran ~6 llamadas en fila).
@@ -1130,7 +1136,6 @@
                 { label: 'Concepto' },
                 { label: 'Vencimiento' },
                 { label: 'Importe', cls: 'num' },
-                { label: 'Descuento', cls: 'num' },
                 { label: 'Abonado', cls: 'num' },
                 { label: 'Saldo', cls: 'num' },
                 { label: 'Estado' }
@@ -1139,7 +1144,6 @@
                 `<span class="font-bold text-slate-800">${fmt.esc(p.concepto)}</span>`,
                 `<span class="text-xs ${p.estado === 'Vencida' ? 'text-red-600 font-bold' : ''}">${fmt.date(p.fechaVencimiento)}</span>`,
                 fmt.money(p.importe),
-                p.descuento > 0 ? `<span class="text-xs text-emerald-600">-S/ ${p.descuento}</span>` : '—',
                 `<span class="text-emerald-700 font-bold">${fmt.money(p.abonado)}</span>`,
                 UI.saldoMora(p),
                 UI.badge(p.estado)
@@ -1187,7 +1191,7 @@
      ------------------------------------------------------------------ */
   const PensionesView = {
     title: 'Gestión de Pensiones',
-    subtitle: 'Cronogramas de pago, cuotas individuales, descuentos y vencimientos',
+    subtitle: 'Cronogramas de pago, cuotas individuales y vencimientos',
     render(params) {
       const ciclos = db.all('ciclos');
       const pensiones = db.all('pensiones').filter(p => !p.anulada);
@@ -1254,7 +1258,6 @@
               { label: 'Concepto' },
               { label: 'Vencimiento' },
               { label: 'Importe', cls: 'num' },
-              { label: 'Descuento', cls: 'num' },
               { label: 'Abonado', cls: 'num' },
               { label: 'Saldo', cls: 'num' },
               { label: 'Estado' },
@@ -1272,12 +1275,10 @@
                 ${p.diasAtraso > 0 ? `<p class="text-[10px] text-red-500 font-bold">${p.diasAtraso} días atraso</p>` : ''}
               </div>`,
               fmt.money(p.importe),
-              p.descuento > 0 ? `<span class="text-xs font-bold text-emerald-600" title="${fmt.esc(p.motivoDescuento)}">-S/ ${p.descuento}</span>` : '—',
               `<span class="font-bold text-emerald-700">${fmt.money(p.abonado)}</span>`,
               UI.saldoMora(p),
               UI.badge(p.estado),
               `<div class="actions">
-                <button class="btn btn-secondary btn-sm" data-pen-descuento="${p.id}" title="Aplicar / Editar Descuento"><i class="fa-solid fa-tag"></i></button>
                 <button class="btn btn-secondary btn-sm" data-pen-ajuste="${p.id}" title="Ajustar fecha o importe"><i class="fa-solid fa-calendar-pen"></i></button>
               </div>`
             ])
@@ -1301,11 +1302,6 @@
       document.getElementById('btn-nueva-obligacion')?.addEventListener('click', () => PensionesView.modalNuevaObligacion());
 
       root.addEventListener('click', async e => {
-        const btnD = e.target.closest('[data-pen-descuento]');
-        if (btnD) {
-          PensionesView.modalDescuento(btnD.dataset.penDescuento);
-          return;
-        }
         const btnA = e.target.closest('[data-pen-ajuste]');
         if (btnA) {
           PensionesView.modalAjuste(btnA.dataset.penAjuste);
@@ -1314,9 +1310,6 @@
     },
 
     modalNuevaObligacion() {
-      const estudiantes = db.all('estudiantes').filter(e => e.activo);
-      const ciclos = db.all('ciclos').filter(c => c.activo);
-
       const html = `
         <form id="form-nueva-obl" class="space-y-4">
           <div class="field">
@@ -1326,16 +1319,12 @@
 
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div class="field">
-              <label class="label">Ciclo Asociado</label>
-              <select name="cicloId" class="select" required>
-                ${ciclos.map(c => { const pr = db.find('programas', c.programaId); return `<option value="${c.id}">${fmt.esc((pr ? (pr.siglas || pr.nombre) + ' · ' : '') + c.nombre)}</option>`; }).join('')}
-              </select>
+              <label class="label">Ciclo Asociado <span class="text-red-500">*</span></label>
+              ${Buscador.html({ tipo: 'ciclo', name: 'cicloId' })}
             </div>
             <div class="field">
               <label class="label">Tipo de Obligación</label>
               <select name="tipo" class="select">
-                <option value="Pensión">Pensión</option>
-                <option value="Matrícula">Matrícula</option>
                 <option value="Materiales">Materiales / Separatas</option>
                 <option value="Simulacro Especial">Simulacro Especial</option>
               </select>
@@ -1344,13 +1333,13 @@
 
           <div class="field">
             <label class="label">Concepto Descriptivo <span class="text-red-500">*</span></label>
-            <input type="text" name="concepto" data-v="texto" minlength="3" maxlength="80" class="input" placeholder="Ej: Pensión Extraordinaria / Material Didáctico" required>
+            <input type="text" name="concepto" data-v="texto" minlength="3" maxlength="80" class="input" placeholder="Ej: Separata de Álgebra / Simulacro especial de Ciencias" required>
           </div>
 
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div class="field">
               <label class="label">Importe Exigible (S/) <span class="text-red-500">*</span></label>
-              <input type="number" step="0.01" min="1" max="20000" name="importe" class="input" placeholder="0.00" required>
+              <input type="number" step="0.01" min="1" max="200" name="importe" class="input" placeholder="0.00" required>
             </div>
             <div class="field">
               <label class="label">Fecha de Vencimiento <span class="text-red-500">*</span></label>
@@ -1381,6 +1370,7 @@
         const cicloId = fd.get('cicloId');
         const est = db.find('estudiantes', estId);
         if (!est) return UI.toast('Seleccione un estudiante de la lista');
+        if (!db.find('ciclos', cicloId)) return UI.toast('Seleccione un ciclo de la lista');
 
         const nueva = db.insert('pensiones', {
           matriculaId: null,
@@ -1404,62 +1394,6 @@
       });
     },
 
-    modalDescuento(penId) {
-      const pen = db.find('pensiones', penId);
-      if (!pen) return;
-      const est = db.find('estudiantes', pen.estudianteId);
-
-      const html = `
-        <form id="form-descuento" class="space-y-4">
-          <div>
-            <p class="font-bold text-slate-800">${fmt.esc(est?.nombres)} ${fmt.esc(est?.apellidos)} (DNI ${est?.dni})</p>
-            <p class="text-xs text-slate-500">Concepto: <b>${fmt.esc(pen.concepto)}</b> | Importe original: <b>${fmt.money(pen.importe)}</b></p>
-          </div>
-
-          <div class="field">
-            <label class="label">Monto de Descuento (S/) <span class="text-red-500">*</span></label>
-            <input type="number" step="0.01" min="0" max="${pen.importe}" name="descuento" class="input font-bold" value="${pen.descuento || 0}" required>
-            <span class="hint">El saldo pendiente se recalculará automáticamente restando este descuento.</span>
-          </div>
-
-          <div class="field">
-            <label class="label">Motivo o Justificación del Descuento <span class="text-red-500">*</span></label>
-            <textarea name="motivoDescuento" data-v="texto" minlength="5" maxlength="200" class="textarea" rows="3" placeholder="Ej: Beca por mérito académico, convenio institucional, descuento por hermanos..." required>${fmt.esc(pen.motivoDescuento || '')}</textarea>
-          </div>
-
-          <div class="modal-footer -mx-6 -mb-6 mt-6">
-            <button type="button" class="btn btn-secondary" data-close>Cancelar</button>
-            <button type="submit" class="btn btn-primary"><i class="fa-solid fa-check"></i> Aplicar Descuento</button>
-          </div>
-        </form>
-      `;
-
-      UI.openModal({
-        title: 'Aplicar Descuento a Pensión',
-        subtitle: 'Actualiza el importe exigible y saldo de la obligación',
-        icon: 'fa-tag',
-        body: html,
-        size: 'md'
-      });
-
-      document.getElementById('form-descuento').addEventListener('submit', e => {
-        e.preventDefault();
-        const fd = new FormData(e.target);
-        const desc = parseFloat(fd.get('descuento')) || 0;
-        const motivo = fd.get('motivoDescuento').trim();
-
-        db.update('pensiones', pen.id, {
-          descuento: desc,
-          motivoDescuento: motivo
-        });
-
-        audit(`Aplicó descuento de S/ ${desc} a pensión ${pen.concepto}`, 'Gestión de Pensiones', `Alumno DNI ${est?.dni} · Motivo: ${motivo}`);
-        UI.closeModal();
-        UI.toast('Descuento aplicado correctamente');
-        Shell.refresh();
-      });
-    },
-
     modalAjuste(penId) {
       const pen = db.find('pensiones', penId);
       if (!pen) return;
@@ -1473,7 +1407,7 @@
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div class="field">
               <label class="label">Importe Base (S/)</label>
-              <input type="number" step="0.01" min="1" max="20000" name="importe" class="input" value="${pen.importe}" required>
+              <input type="number" step="0.01" min="1" max="${['Materiales', 'Simulacro Especial'].includes(pen.tipo) ? 200 : 500}" name="importe" class="input" value="${pen.importe}" required>
             </div>
             <div class="field">
               <label class="label">Fecha de Vencimiento</label>
@@ -1853,9 +1787,9 @@
 
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div class="field">
-              <label class="label">Monto Recibido en Efectivo (S/) <span class="text-red-500">*</span></label>
-              <input type="number" step="0.01" min="0.01" name="monto" id="ef-monto" class="input font-bold" placeholder="0.00" required>
-              <span class="hint" id="ef-monto-hint">No puede superar el saldo de la cuota.</span>
+              <label class="label">Monto a Cobrar en Efectivo (S/) <span class="text-red-500">*</span></label>
+              <input type="number" step="0.01" min="0.01" name="monto" id="ef-monto" class="input font-bold bg-slate-50 cursor-not-allowed" placeholder="Elija la cuota" readonly required>
+              <span class="hint" id="ef-monto-hint">Se cobra el total de la cuota; no se aceptan pagos parciales.</span>
             </div>
             <div class="field">
               <label class="label">Fecha de Cobro</label>
@@ -1892,23 +1826,45 @@
           selP.innerHTML = '<option value="">El estudiante no tiene saldos pendientes.</option>';
           return;
         }
+        // Orden de pago: primero la matrícula y luego las pensiones, de la más antigua a la más reciente.
+        // Las cuotas posteriores quedan con candado y se habilitan al cancelar la anterior.
+        const hab = finance.habilitadas(estId, pagosAll);
+        const opcion = p => {
+          const enRevision = p.disponible <= 0;
+          const bloqueada = !enRevision && !hab.ids.has(p.id);
+          const total = `Total: S/ ${(p.saldo + p.mora).toFixed(2)}${p.mora > 0 ? ` (incl. mora S/ ${p.mora.toFixed(2)})` : ''}`;
+          const marca = enRevision ? ' · pago en revisión' : bloqueada ? ' · pague primero la cuota anterior' : '';
+          return `<option value="${p.id}" ${enRevision || bloqueada ? 'disabled' : ''}>${bloqueada ? '🔒 ' : ''}${fmt.esc(p.concepto)} - ${total}${marca}</option>`;
+        };
+        // Se agrupan por matrícula (cada una tiene su propio orden); la matrícula va primero dentro de su grupo.
+        const grupos = new Map();
+        pens.forEach(p => { const k = p.matriculaId || p.cicloId || 'individual'; if (!grupos.has(k)) grupos.set(k, []); grupos.get(k).push(p); });
+        const etiqueta = (k, lista) => {
+          const m = db.find('matriculas', k);
+          const c = db.find('ciclos', m ? m.cicloId : lista[0].cicloId);
+          const prg = c ? db.find('programas', c.programaId) : null;
+          return `${prg ? (prg.siglas || prg.nombre) : ''}${c ? ' · ' + c.nombre : ''}${m ? '' : ' · Obligaciones individuales'}`.replace(/^ · /, '');
+        };
         selP.innerHTML = '<option value="">Seleccione cuota...</option>' +
-          pens.map(p => `<option value="${p.id}">${fmt.esc(p.concepto)} - Saldo: S/ ${(p.saldo + p.mora).toFixed(2)}${p.mora > 0 ? ` (incl. mora S/ ${p.mora.toFixed(2)})` : ''}</option>`).join('');
+          [...grupos.entries()].map(([k, lista]) => {
+            lista.sort((a, b) => (b.tipo === 'Matrícula') - (a.tipo === 'Matrícula'));   // estable: el resto conserva su orden por fecha
+            return `<optgroup label="${fmt.esc(etiqueta(k, lista))}">${lista.map(opcion).join('')}</optgroup>`;
+          }).join('');
       });
 
-      // Máximo a cobrar = saldo + mora calculada hasta la fecha del cobro.
+      // El cobro en caja es SIEMPRE por el total de la cuota (saldo + mora hasta la fecha del cobro): no hay pagos parciales.
       const fechaCobro = () => { const f = document.querySelector('#form-pago-efectivo [name=fechaPago]')?.value; return f && f <= fmt.today() ? f : fmt.today(); };
       const actualizarMax = (reiniciar) => {
         const pen = selP.value ? db.find('pensiones', selP.value) : null;
         const hint = document.getElementById('ef-monto-hint');
-        if (!pen) { inM.value = ''; inM.removeAttribute('max'); return; }
+        if (!pen) { inM.value = ''; inM.removeAttribute('max'); hint.textContent = 'Se cobra el total de la cuota; no se aceptan pagos parciales.'; return; }
         const inf = finance.info(pen, db.all('pagos'));
         const f = fechaCobro();
         const mora = inf.moraFija ? inf.mora : finance.moraA(inf, f);
         const max = finance.disponibleA(inf, f);
-        if (reiniciar || !inM.value) inM.value = max.toFixed(2);
-        inM.max = max.toFixed(2);                                // no se puede cobrar más que saldo + mora
-        hint.innerHTML = `Máximo a cobrar: S/ ${max.toFixed(2)} (saldo de la cuota${mora > 0 ? ` + mora de S/ ${mora.toFixed(2)}` : ''}).` +
+        inM.value = max.toFixed(2);                              // monto bloqueado: el total de la cuota
+        inM.max = max.toFixed(2);
+        hint.innerHTML = `Se cobra el total de la cuota: S/ ${max.toFixed(2)} (saldo${mora > 0 ? ` + mora de S/ ${mora.toFixed(2)}` : ''}). No se aceptan pagos parciales.` +
           (mora > 0 ? ` <button type="button" class="mora-eye" data-mora="${inf.id}" data-mora-fecha="${f}" title="Ver detalle de la mora"><i class="fa-solid fa-eye"></i></button>` : '');
       };
       selP.addEventListener('change', () => actualizarMax(true));
@@ -1919,13 +1875,17 @@
         const fd = new FormData(e.target);
         const estId = fd.get('estudianteId');
         const pensionId = fd.get('pensionId');
-        const monto = parseFloat(fd.get('monto')) || 0;
         const fechaPago = fd.get('fechaPago');
 
         const est = db.find('estudiantes', estId);
         const pen = db.find('pensiones', pensionId);
         if (!est) return UI.toast('Seleccione un estudiante de la lista');
         if (!pen) return UI.toast('Seleccione la pensión u obligación a pagar');
+        const hab = finance.habilitadas(estId, db.all('pagos'));
+        if (!hab.ids.has(pen.id)) return UI.toast('Esta cuota está bloqueada: primero debe cancelarse la cuota anterior (la matrícula va primero).', 'warning');
+        // El monto SIEMPRE se calcula aquí (total de la cuota): no se toma del campo, así no se puede alterar.
+        const monto = finance.disponibleA(finance.info(pen, db.all('pagos')), fechaPago);
+        if (!(monto > 0)) return UI.toast('Esta cuota no tiene monto por cobrar (pago en revisión o ya cancelada).', 'warning');
 
         // Una sola llamada: el servidor registra el pago aprobado, emite recibo, notifica y audita.
         const saved = window.PT.revisionPagos.registrarCaja({
@@ -2714,6 +2674,47 @@
       const c = cicId ? db.find('ciclos', cicId) : null;
       const programas = db.all('programas');
 
+      // ---- Fechas coherentes con una academia: el ciclo se crea antes de empezar ----
+      const RC = RULES.ciclo;
+      const hoy = fmt.today();
+      const mesSiguiente = n => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth() + n, 1); };
+      const iniDefecto = fmt.toISO(mesSiguiente(1));                                   // 1.º del próximo mes
+      const finDefecto = fmt.toISO(new Date(mesSiguiente(1).getFullYear(), mesSiguiente(1).getMonth() + 4, 15));
+      const nombreDefecto = `${iniDefecto.slice(0, 4)}-${Number(iniDefecto.slice(5, 7)) <= 6 ? 'I' : 'II'}`;
+      // Nuevo: no puede empezar en el pasado. Edición: no se puede adelantar el inicio más allá de lo ya registrado.
+      const minInicio = c ? (c.fechaInicio < hoy ? c.fechaInicio : hoy) : hoy;
+      const minFin = c ? (c.fechaFin < hoy ? c.fechaFin : hoy) : hoy;
+      const maxInicio = fmt.addDays(hoy, Math.round(RC.mesesAnticipacionMax * 30.4));
+      const maxFin = fmt.addDays(maxInicio, RC.duracionMaxDias);
+      const orig = c ? { programaId: c.programaId, nombre: c.nombre, fechaInicio: c.fechaInicio, fechaFin: c.fechaFin, cuotas: String(c.cuotas) } : null;
+      // En una edición, un campo no se re-valida si no cambió (los ciclos antiguos siguen siendo editables).
+      const sinCambios = (form, campos) => !!orig && campos.every(k => String(form.elements[k].value) === String(orig[k]));
+
+      const V = window.PT.Forms.validadores;
+      V['ciclo-nombre'] = (el, form) => {
+        if (sinCambios(form, ['programaId', 'nombre', 'fechaInicio'])) return '';
+        const anio = (/^(\d{4})/.exec(el.value) || [])[1];
+        const inicio = form.elements.fechaInicio.value;
+        if (anio && inicio && anio !== inicio.slice(0, 4)) return `El nombre indica el año ${anio}, pero el ciclo inicia en ${inicio.slice(0, 4)}.`;
+        const repetido = db.all('ciclos').some(x => x.id !== cicId && x.programaId === form.elements.programaId.value && String(x.nombre).toUpperCase() === el.value.toUpperCase());
+        return repetido ? `Ya existe un ciclo "${el.value.toUpperCase()}" para este programa.` : '';
+      };
+      V['ciclo-fin'] = (el, form) => {
+        if (sinCambios(form, ['fechaInicio', 'fechaFin', 'cuotas'])) return '';
+        const inicio = form.elements.fechaInicio.value;
+        if (!inicio) return '';
+        const dias = fmt.daysBetween(inicio, el.value);
+        if (dias < RC.duracionMinDias) return `Un ciclo debe durar al menos ${RC.duracionMinDias} días.`;
+        if (dias > RC.duracionMaxDias) return 'Un ciclo no puede durar más de 12 meses. Revise la fecha de fin.';
+        const n = parseInt(form.elements.cuotas.value, 10) || 0;
+        if (n >= 1) {
+          const di = fmt.parseDate(inicio);
+          const ultima = fmt.toISO(new Date(di.getFullYear(), di.getMonth() + n - 1, 15));   // las pensiones vencen el día 15
+          if (el.value < ultima) return `Con ${n} ${n === 1 ? 'pensión' : 'pensiones'}, la última vence el ${window.PT.Forms.esFecha(ultima)}: el ciclo no puede terminar antes. Amplíe la fecha de fin o reduzca las pensiones.`;
+        }
+        return '';
+      };
+
       const html = `
         <form id="form-cic" class="space-y-4">
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -2725,7 +2726,7 @@
             </div>
             <div class="field">
               <label class="label">Nombre del Ciclo <span class="text-red-500">*</span></label>
-              <input type="text" name="nombre" data-v="ciclo" class="input uppercase" value="${fmt.esc(c?.nombre || '2026-II')}" required placeholder="2026-II">
+              <input type="text" name="nombre" data-v="ciclo" data-validar="ciclo-nombre" class="input uppercase" value="${fmt.esc(c?.nombre || nombreDefecto)}" required placeholder="${nombreDefecto}">
             </div>
           </div>
 
@@ -2741,26 +2742,29 @@
             </div>
             <div class="field">
               <label class="label">Fecha Inicio</label>
-              <input type="date" name="fechaInicio" class="input" value="${c?.fechaInicio || '2026-08-01'}" min="${fmt.addDays(fmt.today(), -1095)}" max="${fmt.addDays(fmt.today(), 1095)}" required>
+              <input type="date" name="fechaInicio" class="input" value="${c?.fechaInicio || iniDefecto}" min="${minInicio}" max="${maxInicio}"
+                data-min-msg="${c ? 'No se puede adelantar el inicio a una fecha anterior a la ya registrada.' : 'No se puede crear un ciclo que ya empezó: el inicio debe ser hoy o una fecha futura.'}"
+                data-max-msg="Un ciclo no puede crearse con más de ${RC.mesesAnticipacionMax} meses de anticipación." required>
             </div>
             <div class="field">
               <label class="label">Fecha Fin</label>
-              <input type="date" name="fechaFin" data-after="fechaInicio" data-after-msg="La fecha de fin debe ser posterior a la fecha de inicio." class="input" value="${c?.fechaFin || '2026-12-15'}" min="${fmt.addDays(fmt.today(), -1095)}" max="${fmt.addDays(fmt.today(), 1460)}" required>
+              <input type="date" name="fechaFin" data-after="fechaInicio" data-after-msg="La fecha de fin debe ser posterior a la fecha de inicio." data-validar="ciclo-fin" class="input" value="${c?.fechaFin || finDefecto}" min="${minFin}" max="${maxFin}"
+                data-min-msg="La fecha de fin no puede ser anterior a hoy." required>
             </div>
           </div>
 
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div class="field">
               <label class="label">Costo Matrícula (S/)</label>
-              <input type="number" step="0.01" min="0" max="5000" name="matricula" class="input" value="${c?.matricula ?? 150}" required>
+              <input type="number" step="0.01" min="0" max="500" name="matricula" class="input" value="${c?.matricula ?? 150}" required>
             </div>
             <div class="field">
               <label class="label">Pensión Mensual (S/)</label>
-              <input type="number" step="0.01" min="1" max="5000" name="pension" class="input" value="${c?.pension ?? 400}" required>
+              <input type="number" step="0.01" min="1" max="500" name="pension" class="input" value="${c?.pension ?? 400}" required>
             </div>
             <div class="field">
               <label class="label">N° de Pensiones</label>
-              <input type="number" step="1" min="1" max="12" name="cuotas" class="input" value="${c?.cuotas ?? 4}" required>
+              <input type="number" step="1" min="1" max="10" name="cuotas" class="input" value="${c?.cuotas ?? 4}" required>
             </div>
           </div>
 

@@ -190,7 +190,7 @@
           <div class="page-head">
             <div>
               <h3 class="page-title">Padrón de Mis Matrículas</h3>
-              <p class="page-desc">Información oficial de tus ciclos cursados en PLUSTWENTY (solo lectura)</p>
+              <p class="page-desc">Información oficial de tus ciclos cursados en PLUSTWENTY</p>
             </div>
           </div>
 
@@ -257,7 +257,6 @@
               { label: 'Concepto de Pago' },
               { label: 'Fecha Vence' },
               { label: 'Importe Base', cls: 'num' },
-              { label: 'Descuento', cls: 'num' },
               { label: 'Abonado', cls: 'num' },
               { label: 'Saldo Pendiente', cls: 'num' },
               { label: 'Estado' },
@@ -277,7 +276,6 @@
                   ${p.diasAtraso > 0 ? `<p class="text-[10px] text-red-500 font-bold">${p.diasAtraso} días atraso</p>` : ''}
                 </div>`,
                 fmt.money(p.importe),
-                p.descuento > 0 ? `<span class="text-xs text-emerald-600 font-bold" title="${fmt.esc(p.motivoDescuento)}">-S/ ${p.descuento}</span>` : '—',
                 `<span class="font-bold text-emerald-700">${fmt.money(p.abonado)}</span>`,
                 UI.saldoMora(p),
                 UI.badge(p.estado),
