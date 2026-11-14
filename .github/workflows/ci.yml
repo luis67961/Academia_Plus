@@ -1,0 +1,54 @@
+name: CI
+
+# Integración continua: se ejecuta en cada push a develop/main y en cada solicitud pull.
+# Si algún paso falla, la ejecución queda en rojo y esa rama NO se debe fusionar
+# (ver "Proteger la rama" en docs/EVIDENCIAS_APF3.md).
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+    branches: [develop, main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pruebas-java:
+    name: Compilar y probar (Java 17 + Maven)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      # compila, ejecuta las pruebas JUnit y empaqueta el JAR
+      - name: mvn verify
+        run: mvn -B -ntp verify
+
+      - name: Guardar reporte de pruebas
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reporte-pruebas-java
+          path: target/surefire-reports/
+          if-no-files-found: ignore
+
+  pruebas-reglas-frontend:
+    name: Pruebas de reglas del frontend (mora, orden de pago y login)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # La regla de mora (1 % diario, tope 20 %) y el orden de pago viven en js/app.js;
+      # src/test/js contiene la prueba del inicio de sesión.
+      - name: node --test
+        run: node --test pruebas/*.test.js src/test/js/*.cjs

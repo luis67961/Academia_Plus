@@ -7,7 +7,9 @@ const root = path.resolve(__dirname, '../../main/resources/static/PLUSTWENTY');
 
 function cargar(fetch, timers = {}) {
   const window = { addEventListener() {} };
-  const context = vm.createContext({ window, document: { getElementById: () => ({}) },
+  const context = vm.createContext({ window, document: { getElementById: () => ({}), querySelector: () => null, querySelectorAll: () => [],
+      addEventListener() {}, readyState: 'complete', body: {}, documentElement: {} },
+    MutationObserver: class { observe() {} disconnect() {} },
     fetch, AbortController, setTimeout, clearTimeout, ...timers });
   vm.runInContext(fs.readFileSync(path.join(root, 'js/app.js'), 'utf8'), context);
   return window.PT;
