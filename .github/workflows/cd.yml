@@ -1,0 +1,84 @@
+name: CD
+
+# Entrega continua: se despliega SOLO al etiquetar una versión (git tag vX.Y.Z).
+# También se puede lanzar a mano indicando una etiqueta anterior: es la VUELTA ATRÁS
+# (ver docs/EVIDENCIAS_APF3.md, sección "Procedimiento de vuelta atrás").
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Etiqueta a desplegar (ej. v1.1.0). Úsalo para volver a una versión anterior.'
+        required: true
+
+permissions:
+  contents: write   # crear el Release de la versión
+
+concurrency:
+  group: despliegue
+  cancel-in-progress: false
+
+env:
+  VERSION: ${{ github.event.inputs.version || github.ref_name }}
+
+jobs:
+  build:   # solo se despliega si las pruebas pasan (en una vuelta atrás manual no se repiten)
+    name: Pruebas de la versión
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.VERSION }}
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      - run: mvn -B -ntp verify
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test pruebas/*.test.js src/test/js/*.cjs
+
+  deploy:
+    name: Desplegar a producción
+    needs: build
+    # corre si las pruebas pasaron, o si se lanzó a mano (vuelta atrás: el build se omite)
+    if: ${{ !cancelled() && (needs.build.result == 'success' || needs.build.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    environment: produccion
+    steps:
+      # Se usa el código actual (tiene scripts/deploy.sh aunque la etiqueta sea antigua);
+      # el script resuelve el commit exacto de la etiqueta con git rev-parse.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Desplegar (un solo comando, repetible)
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+          APP_URL: ${{ vars.APP_URL }}
+        run: bash ./scripts/deploy.sh "$VERSION"
+
+      # Bitácora: queda visible en la pestaña Actions > ejecución > Summary
+      - name: Registrar en la bitácora de despliegues
+        if: success()
+        run: |
+          {
+            echo "## Despliegue registrado"
+            echo ""
+            echo "| Versión | Commit | Disparado por | Fecha (UTC) | Origen |"
+            echo "|---|---|---|---|---|"
+            echo "| \`$VERSION\` | \`$(git rev-parse --short "$VERSION^{commit}")\` | @${{ github.actor }} | $(date -u '+%Y-%m-%d %H:%M') | ${{ github.event_name }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publicar el Release (notas de versión)
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "$VERSION" --generate-notes --title "$VERSION" || echo "El Release ya existía"
