@@ -1,3 +1,5 @@
+[![CI](https://github.com/luis67961/Academia_Plus/actions/workflows/ci.yml/badge.svg)](https://github.com/luis67961/Academia_Plus/actions/workflows/ci.yml)
+
 # Plus Twenty — Demo empresarial
 
 Demo local de matrículas y pensiones para Matemática, Oratoria, Locución y Podcast.
