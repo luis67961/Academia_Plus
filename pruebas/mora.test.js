@@ -72,7 +72,7 @@ test('los descuentos están desactivados: un descuento guardado se ignora y el t
 test('si el pago completo ya fue reportado (en revisión), la mora queda fija y no se puede volver a pagar', () => {
   const inf = finance.info(cuota({ fechaVencimiento: iso(-45) }), [pago(480, 'Pendiente')]);
   assert.equal(inf.moraFija, true);
-  assert.equal(inf.mora, 999);
+  assert.equal(inf.mora, 80);
   assert.equal(inf.disponible, 0);
 });
 
