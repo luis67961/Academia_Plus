@@ -2720,9 +2720,7 @@
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div class="field">
               <label class="label">Programa Académico <span class="text-red-500">*</span></label>
-              <select name="programaId" class="select" required>
-                ${programas.map(p => `<option value="${p.id}" ${c?.programaId === p.id ? 'selected' : ''}>${fmt.esc(p.nombre)}</option>`).join('')}
-              </select>
+                           ${Buscador.html({ tipo: 'programa', name: 'programaId', id: 'cic-modal-prg', valor: c?.programaId || '' })}
             </div>
             <div class="field">
               <label class="label">Nombre del Ciclo <span class="text-red-500">*</span></label>
