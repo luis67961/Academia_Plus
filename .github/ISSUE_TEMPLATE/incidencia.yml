@@ -1,0 +1,64 @@
+name: Incidencia (bug)
+description: Una falla detectada por el equipo o reportada por un usuario durante la prueba del SUS
+title: "[BUG] "
+labels: ["bug", "estado:abierta"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Toda falla se registra aquí; nada se corrige solo por el chat.
+        **Quien reporta no es quien cierra:** otra persona debe verificar la corrección.
+  - type: dropdown
+    id: origen
+    attributes:
+      label: Origen
+      options:
+        - Detectada por el equipo
+        - Reportada por un usuario (prueba SUS)
+        - Observación del profesor / dueño del negocio
+    validations:
+      required: true
+  - type: textarea
+    id: pasos
+    attributes:
+      label: Pasos para reproducir
+      placeholder: |
+        1. Ingresar como estudiante
+        2. Ir a Reportar Pago
+        3. ...
+    validations:
+      required: true
+  - type: input
+    id: esperado
+    attributes:
+      label: Resultado esperado
+    validations:
+      required: true
+  - type: input
+    id: obtenido
+    attributes:
+      label: Resultado obtenido
+    validations:
+      required: true
+  - type: dropdown
+    id: severidad
+    attributes:
+      label: Severidad
+      description: Alta = impide pagar/matricular o muestra montos incorrectos. Media = molesta pero hay alternativa. Baja = detalle visual o de texto.
+      options:
+        - alta
+        - media
+        - baja
+    validations:
+      required: true
+  - type: input
+    id: responsable
+    attributes:
+      label: Responsable
+      description: Usuario de GitHub de quien la va a atender (con @)
+      placeholder: "@usuario"
+  - type: textarea
+    id: evidencia
+    attributes:
+      label: Evidencia
+      description: Arrastra aquí una captura o un video (y, si hay, el mensaje de error).
